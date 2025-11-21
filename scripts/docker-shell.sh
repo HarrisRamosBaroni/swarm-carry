@@ -19,5 +19,5 @@ echo "Opening shell in container '${CONTAINER_NAME}'..."
 echo ""
 
 # Open interactive shell as ros user
-docker exec -it "${CONTAINER_NAME}" \
+docker exec -it -u ros "${CONTAINER_NAME}" \
     /bin/bash -c "cd /workspace && source install/setup.bash 2>/dev/null || true && bash"

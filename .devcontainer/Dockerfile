@@ -64,3 +64,6 @@ RUN echo "vncpass" | /usr/bin/vncpasswd -f > /home/ros/.vnc/passwd && \
 
 # Expose VNC and noVNC ports
 EXPOSE 5901 6080
+
+# Switch to ros user by default
+USER ros

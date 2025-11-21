@@ -48,6 +48,7 @@ DOCKER_ARGS=(
     --security-opt=apparmor:unconfined
     --ipc=host
     --workdir=/workspace
+    --user=ros
 )
 
 # Set up X11 or VNC
