@@ -16,9 +16,11 @@ BUILD_TYPE=${BUILD_TYPE:-RelWithDebInfo}
 echo "Build type: $BUILD_TYPE"
 
 # Build workspace
+# Set SETUPTOOLS_USE_DISTUTILS to avoid editable install issues
+export SETUPTOOLS_USE_DISTUTILS=stdlib
+
 colcon build \
     --merge-install \
-    --symlink-install \
     --cmake-args \
     "-DCMAKE_BUILD_TYPE=$BUILD_TYPE" \
     "-DCMAKE_EXPORT_COMPILE_COMMANDS=On" \

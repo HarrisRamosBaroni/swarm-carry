@@ -12,19 +12,13 @@ setup(
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name + '/config', ['config/cart_controllers.yaml', 'config/controllers.yaml']),
     ],
-    install_requires=[
-        'setuptools',
-        'numpy',
-        'python-control'  # For control systems library
-    ],
+    install_requires=['setuptools'],
     zip_safe=True,
     maintainer='harris',
     maintainer_email='yuopres@gmail.com',
     description='Inverted Pendulum Controller using LQR',
     license='Apache-2.0',
-    extras_require={
-        'test': ['pytest']
-    },
+    tests_require=['pytest'],
     entry_points={
         'console_scripts': [
             'inverted_pendulum_controller = inverted_pendulum_controller.inverted_pendulum_control:main',
