@@ -1,0 +1,44 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 1000
+
+    # This is a ros2_control controllert that is only reading from state_interfaces and not publishing commands to any command interfaces
+    robot_joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+      # joints:
+      #   - cart_joint
+      #   - pendulum_joint
+
+    cart_effort_controller:
+      type: effort_controllers/JointGroupEffortController
+
+    # cart_effort_controller:
+    #   type: effort_controllers/JointGroupEffortController
+    #   joints: [cart_joint]
+    #   interface_name: effort
+
+    # cart_effort_controller:
+    #   type: "effort_controllers/JointEffortController"
+    #   joints:
+    #     - cart_joint
+
+    # lqr_controller:
+    #   type: "lqr_controller/LQRController"
+    #   joints:
+    #     - "cart_joint"
+
+robot_joint_state_broadcaster:
+  # type: joint_state_broadcaster/JointStateBroadcaster
+  ros__parameters:
+    joints:
+      - cart_joint
+      - pendulum_joint
+
+cart_effort_controller:
+  # type: "effort_controllers/JointEffortController"
+  ros__parameters:
+    # type: "effort_controllers/JointEffortController"
+    # update_rate: 1000
+    joints:
+      - cart_joint
+    interface_name: effort

@@ -1,0 +1,17 @@
+build/*
+install/*
+log/*
+site/*
+src/examples/
+__pycache__/
+
+# VSCode settings (personal preference)
+.vscode/
+
+# Environment variables (use .env.example as template)
+.env
+
+# Personal/temporary directories
+.report
+.plan
+.paper

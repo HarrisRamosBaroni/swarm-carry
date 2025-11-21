@@ -1,0 +1,22 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 100
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    # cart_effort_controller:
+    #   type: "effort_controllers/JointEffortController"
+    #   joints:
+    #     - cart_joint
+
+    # lqr_controller:
+    #   type: "lqr_controller/LQRController"
+    #   joints:
+    #     - "cart_joint"
+
+cart_effort_controller:
+  ros__parameters:
+    type: "effort_controllers/JointEffortController"
+    joints:
+      - cart_joint

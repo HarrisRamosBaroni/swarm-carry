@@ -1,0 +1,38 @@
+// Dev container configuration for X11 display forwarding (Linux/WSLg)
+// Use this on Ubuntu/Linux systems for native GUI performance
+{
+	"name": "ROS2 Gazebo (X11)",
+	"dockerFile": "Dockerfile",
+	"build": {
+		"args": {
+			"WORKSPACE": "${containerWorkspaceFolder}"
+		}
+	},
+	"remoteUser": "ros",
+	"runArgs": [
+		"--cap-add=SYS_PTRACE",
+		"--security-opt=seccomp:unconfined",
+		"--security-opt=apparmor:unconfined",
+		"--ipc=host",
+		"--network=host",
+		// X11 socket forwarding
+		"--volume=/tmp/.X11-unix:/tmp/.X11-unix"
+	],
+	"containerEnv": {
+		"DISPLAY": "${localEnv:DISPLAY}",
+		"LIBGL_ALWAYS_SOFTWARE": "1"
+	},
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"ms-iot.vscode-ros",
+				"ms-python.python",
+				"ms-vscode.cpptools",
+				"twxs.cmake",
+				"redhat.vscode-yaml",
+				"DotJoshJohnson.xml"
+			]
+		}
+	},
+	"postCreateCommand": "echo 'Container ready! Run: ./scripts/setup.sh && ./scripts/build.sh'"
+}
