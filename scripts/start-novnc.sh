@@ -29,7 +29,7 @@ websockify --web=/usr/share/novnc 6080 localhost:${VNC_PORT} &
 echo ""
 echo "✓ noVNC started!"
 echo ""
-echo "Access GUI in browser: http://localhost:6080"
+echo "Access GUI in browser: http://localhost:6080/vnc.html"
 echo "Password: vncpass"
 echo ""
 echo "To stop: pkill -f 'websockify.*6080'"

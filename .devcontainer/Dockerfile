@@ -11,8 +11,10 @@ RUN apt-get update \
       ros-jazzy-ros2-controllers \
       ros-jazzy-gz-ros2-control \
       # VNC server and desktop environment
-      tigervnc-standalone-server tigervnc-common \
+      tigervnc-standalone-server tigervnc-common tigervnc-tools \
       xfce4 xfce4-goodies \
+      # D-Bus and session management
+      dbus-x11 \
       # noVNC for optional web access
       novnc websockify \
       # Utilities
@@ -49,12 +51,14 @@ RUN mkdir -p /home/ros/.vnc && \
     echo "#!/bin/sh" > /home/ros/.vnc/xstartup && \
     echo "unset SESSION_MANAGER" >> /home/ros/.vnc/xstartup && \
     echo "unset DBUS_SESSION_BUS_ADDRESS" >> /home/ros/.vnc/xstartup && \
+    echo "# Start D-Bus session" >> /home/ros/.vnc/xstartup && \
+    echo "eval \$(dbus-launch --sh-syntax --exit-with-session)" >> /home/ros/.vnc/xstartup && \
     echo "exec startxfce4" >> /home/ros/.vnc/xstartup && \
     chmod +x /home/ros/.vnc/xstartup && \
     chown -R ros:ros /home/ros/.vnc
 
 # VNC password (default: "vncpass" - change for production)
-RUN echo "vncpass" | vncpasswd -f > /home/ros/.vnc/passwd && \
+RUN echo "vncpass" | /usr/bin/vncpasswd -f > /home/ros/.vnc/passwd && \
     chmod 600 /home/ros/.vnc/passwd && \
     chown ros:ros /home/ros/.vnc/passwd
 

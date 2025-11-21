@@ -9,8 +9,20 @@ CONTAINER_NAME="swarm-sim-dev"
 
 # Detect if we should use X11
 USE_X11=false
-if [ -n "$DISPLAY" ] && [ "$(uname)" == "Linux" ]; then
-    USE_X11=true
+if [ -n "$DISPLAY" ] && [ "$(uname)" == "Linux" ] && [ -d "/tmp/.X11-unix" ]; then
+    # Check if we can actually mount this directory with Docker
+    if docker run --rm -v /tmp/.X11-unix:/tmp/.X11-unix alpine true 2>/dev/null; then
+        USE_X11=true
+    else
+        echo "Warning: Cannot use X11 forwarding."
+        if [ "$XDG_SESSION_TYPE" = "wayland" ]; then
+            echo "Detected Wayland session - X11 socket sharing blocked by Docker Desktop."
+        else
+            echo "X11 socket exists but Docker cannot access it."
+        fi
+        echo "Falling back to VNC mode (recommended for Wayland)."
+        echo ""
+    fi
 fi
 
 # Build the image if it doesn't exist
@@ -61,7 +73,7 @@ else
     echo "  1. Start VNC: ./scripts/start-vnc.sh"
     echo "  2. Connect with:"
     echo "     - VNC client: localhost:5901 (password: vncpass)"
-    echo "     - Browser: ./scripts/start-novnc.sh then http://localhost:6080"
+    echo "     - Browser: ./scripts/start-novnc.sh then http://localhost:6080/vnc.html"
     echo ""
 
     docker run "${DOCKER_ARGS[@]}" \

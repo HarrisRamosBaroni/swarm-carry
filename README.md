@@ -41,7 +41,7 @@ Works on all platforms. Connect with VNC client or browser.
 
 # OR use browser (noVNC):
 ./scripts/start-novnc.sh
-# Then open: http://localhost:6080
+# Then open: http://localhost:6080/vnc.html
 
 # 4. In VNC desktop or separate terminal: setup and run
 ./scripts/setup.sh
@@ -176,7 +176,7 @@ ros2 launch inverted_pendulum_bringup inverted_pendulum.launch.py
 
 # GUI access:
 # - X11: Windows appear on desktop
-# - noVNC: Open http://localhost:6080
+# - noVNC: Open http://localhost:6080/vnc.html
 ```
 
 **Important**: After stopping (Ctrl+C), wait 30 seconds before restarting to allow clean shutdown.
