@@ -1,11 +1,21 @@
 #!/bin/bash
 # Direct Docker run (alternative to VSCode devcontainer)
 # Supports X11 (Linux) or VNC/noVNC (all platforms)
+#
+# Usage:
+#   ./scripts/docker-run.sh           # Run container (build if needed)
+#   ./scripts/docker-run.sh --rebuild # Force rebuild and run
 
 set -e
 
 IMAGE_NAME="swarm-sim"
 CONTAINER_NAME="swarm-sim-dev"
+
+# Parse command line arguments
+FORCE_REBUILD=false
+if [ "$1" = "--rebuild" ]; then
+    FORCE_REBUILD=true
+fi
 
 # Detect if we should use X11
 USE_X11=false
@@ -25,8 +35,11 @@ if [ -n "$DISPLAY" ] && [ "$(uname)" == "Linux" ] && [ -d "/tmp/.X11-unix" ]; th
     fi
 fi
 
-# Build the image if it doesn't exist
-if ! docker image inspect "$IMAGE_NAME" &> /dev/null; then
+# Build the image if it doesn't exist or if rebuild is forced
+if [ "$FORCE_REBUILD" = true ]; then
+    echo "Forcing rebuild of Docker image '$IMAGE_NAME'..."
+    docker build -t "$IMAGE_NAME" .devcontainer/
+elif ! docker image inspect "$IMAGE_NAME" &> /dev/null; then
     echo "Building Docker image '$IMAGE_NAME'..."
     echo "(This includes VNC server - takes ~5 minutes first time)"
     docker build -t "$IMAGE_NAME" .devcontainer/
