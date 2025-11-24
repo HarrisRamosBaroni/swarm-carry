@@ -44,7 +44,8 @@ RUN echo "if [ -f ${WORKSPACE}/install/setup.bash ]; then source ${WORKSPACE}/in
 # Set up a directory for runtime files dump which is writable by the ros user
 RUN echo "export XDG_RUNTIME_DIR=/tmp/runtime-ros" >> /home/ros/.bashrc && \
     echo "mkdir -p \$XDG_RUNTIME_DIR" >> /home/ros/.bashrc && \
-    echo "chmod 700 \$XDG_RUNTIME_DIR" >> /home/ros/.bashrc
+    echo "chmod 700 \$XDG_RUNTIME_DIR" >> /home/ros/.bashrc && \
+    echo "export DISPLAY=:1" >> /home/ros/.bashrc
 
 # Set up VNC server for ros user
 RUN mkdir -p /home/ros/.vnc && \
