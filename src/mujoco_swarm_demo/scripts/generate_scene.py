@@ -116,9 +116,11 @@ def generate_scene(num_robots=2, num_boxes=3, output_path=None):
     xml_content = f'''<mujoco model="multi_robot_pushing_demo">
   <compiler angle="radian" meshdir="../models/assets" autolimits="true"/>
 
-  <option integrator="implicitfast" timestep="0.002">
+  <option integrator="Euler" timestep="0.005">
     <flag contact="enable" warmstart="enable"/>
   </option>
+
+  <size njmax="500" nconmax="100"/>
 
   <statistic center="0 0 0.4" extent="2.5"/>
 

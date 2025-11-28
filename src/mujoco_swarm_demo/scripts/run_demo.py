@@ -214,8 +214,9 @@ class PushingDemoController:
                 total_contacts += num_contacts
                 max_contacts = max(max_contacts, num_contacts)
 
-                # Sync viewer
-                viewer.sync()
+                # Sync viewer (only every 10 steps for performance)
+                if self.step_count % 10 == 0:
+                    viewer.sync()
 
                 # Performance reporting every 2 seconds
                 if self.data.time - last_report > 2.0:
@@ -225,10 +226,11 @@ class PushingDemoController:
                           f"Contacts={num_contacts}/{max_contacts}")
                     last_report = self.data.time
 
-                # Maintain real-time if possible
-                elapsed = time.time() - step_start
-                if elapsed < self.model.opt.timestep:
-                    time.sleep(self.model.opt.timestep - elapsed)
+                # No sleep - run as fast as possible
+                # # Maintain real-time if possible
+                # elapsed = time.time() - step_start
+                # if elapsed < self.model.opt.timestep:
+                #     time.sleep(self.model.opt.timestep - elapsed)
 
         # Final statistics
         real_time = time.time() - self.start_time
