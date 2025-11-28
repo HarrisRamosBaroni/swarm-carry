@@ -40,7 +40,7 @@
     <!-- Robots -->
 
     <!-- Robot 0 -->
-    <body name="robot_0_base" pos="0.8816778784387097 1.2135254915624212 0.033">
+    <body name="robot_0_base" pos="0.8 0.0 0.033" euler="0 0 3.141592653589793">
       <freejoint name="robot_0_joint"/>
       <geom pos="-0.064 0 0.01" quat="1 0 0 0" type="mesh" rgba="0.4 0.4 0.4 1" mesh="waffle_pi_base"/>
       <geom size="0.015 0.0045 0.01" pos="-0.177 -0.0639992 0.005" quat="0.707388 -0.706825 0 0" type="box"/>
@@ -62,7 +62,7 @@
     </body>
 
     <!-- Robot 1 -->
-    <body name="robot_1_base" pos="9.184850993605148e-17 1.5 0.033">
+    <body name="robot_1_base" pos="-0.39999999999999986 0.692820323027551 0.033" euler="0 0 -1.047197551196598">
       <freejoint name="robot_1_joint"/>
       <geom pos="-0.064 0 0.01" quat="1 0 0 0" type="mesh" rgba="0.4 0.4 0.4 1" mesh="waffle_pi_base"/>
       <geom size="0.015 0.0045 0.01" pos="-0.177 -0.0639992 0.005" quat="0.707388 -0.706825 0 0" type="box"/>
@@ -84,7 +84,7 @@
     </body>
 
     <!-- Robot 2 -->
-    <body name="robot_2_base" pos="-0.8816778784387096 1.2135254915624212 0.033">
+    <body name="robot_2_base" pos="-0.40000000000000036 -0.6928203230275507 0.033" euler="0 0 1.0471975511965972">
       <freejoint name="robot_2_joint"/>
       <geom pos="-0.064 0 0.01" quat="1 0 0 0" type="mesh" rgba="0.4 0.4 0.4 1" mesh="waffle_pi_base"/>
       <geom size="0.015 0.0045 0.01" pos="-0.177 -0.0639992 0.005" quat="0.707388 -0.706825 0 0" type="box"/>
@@ -120,14 +120,6 @@
       <freejoint name="box_1_joint"/>
       <inertial pos="0 0 0" mass="1.0" diaginertia="0.3333333333333333 0.3333333333333333 0.3333333333333333"/>
       <geom name="box_1_geom" type="box" size="0.15 0.15 0.1"
-            rgba="0.8 0.3 0.3 0.9" friction="0.7 0.005 0.0001"/>
-    </body>
-
-    <!-- Box 2 -->
-    <body name="box_2" pos="-0.4 0.2 0.08">
-      <freejoint name="box_2_joint"/>
-      <inertial pos="0 0 0" mass="0.5" diaginertia="0.16666666666666666 0.16666666666666666 0.16666666666666666"/>
-      <geom name="box_2_geom" type="box" size="0.1 0.1 0.08"
             rgba="0.8 0.3 0.3 0.9" friction="0.7 0.005 0.0001"/>
     </body>
   </worldbody>

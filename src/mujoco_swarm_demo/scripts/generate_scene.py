@@ -9,11 +9,11 @@ import os
 from pathlib import Path
 
 
-def generate_robot_body(robot_id, pos_x, pos_y, pos_z=0.0):
+def generate_robot_body(robot_id, pos_x, pos_y, pos_z=0.0, yaw=0.0):
     """Generate XML for a single TurtleBot3 instance."""
     return f'''
     <!-- Robot {robot_id} -->
-    <body name="robot_{robot_id}_base" pos="{pos_x} {pos_y} {pos_z}">
+    <body name="robot_{robot_id}_base" pos="{pos_x} {pos_y} {pos_z}" euler="0 0 {yaw}">
       <freejoint name="robot_{robot_id}_joint"/>
       <geom pos="-0.064 0 0.01" quat="1 0 0 0" type="mesh" rgba="0.4 0.4 0.4 1" mesh="waffle_pi_base"/>
       <geom size="0.015 0.0045 0.01" pos="-0.177 -0.0639992 0.005" quat="0.707388 -0.706825 0 0" type="box"/>
@@ -66,15 +66,23 @@ def generate_scene(num_robots=2, num_boxes=3, output_path=None):
         output_path: Path to save the XML file
     """
 
-    # Robot positions - arranged in a semi-circle
+    # Robot positions - arranged in a circle around central box, facing inward
     import math
     robot_positions = []
-    radius = 1.5
+    radius = 0.8  # Closer to box for quicker collision
+    box_center = (0.0, 0.0)  # Central box position
+
     for i in range(num_robots):
-        angle = math.pi * (0.3 + 0.4 * i / max(1, num_robots - 1))  # Spread across front
-        x = radius * math.cos(angle)
-        y = radius * math.sin(angle)
-        robot_positions.append((x, y, 0.033))
+        # Distribute robots evenly around circle
+        angle = 2 * math.pi * i / num_robots
+        x = box_center[0] + radius * math.cos(angle)
+        y = box_center[1] + radius * math.sin(angle)
+
+        # Calculate yaw to face toward box center
+        # Robot's forward is +x in local frame, so yaw should point toward center
+        yaw = math.atan2(box_center[1] - y, box_center[0] - x)
+
+        robot_positions.append((x, y, 0.033, yaw))
 
     # Box positions - arranged in center
     box_configs = [
@@ -88,8 +96,8 @@ def generate_scene(num_robots=2, num_boxes=3, output_path=None):
 
     # Generate robot bodies
     robot_bodies = "\n".join([
-        generate_robot_body(i, x, y, z)
-        for i, (x, y, z) in enumerate(robot_positions)
+        generate_robot_body(i, x, y, z, yaw)
+        for i, (x, y, z, yaw) in enumerate(robot_positions)
     ])
 
     # Generate robot actuators

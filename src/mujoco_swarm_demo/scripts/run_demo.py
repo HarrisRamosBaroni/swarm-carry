@@ -100,81 +100,59 @@ class PushingDemoController:
 
     def demo_scenario_convergent_push(self, t):
         """
-        Demo scenario: Robots converge on boxes from different sides.
+        Demo scenario: Robots converge on box from all sides.
 
         This demonstrates:
-        - Multiple robots approaching targets
+        - Multiple robots approaching target
         - Contact dynamics (robot-box collisions)
         - Object manipulation through pushing
+        - Coordinated multi-agent behavior
         """
-        # Simple time-based control
-        if t < 3.0:
-            # Phase 1: Move forward toward center (0-3s)
+        # Robots are pre-positioned facing the box, just drive forward
+        if t < 5.0:
+            # Phase 1: Drive toward box (0-5s)
+            for robot_id in range(self.num_robots):
+                self.set_robot_velocity(robot_id, 8.0, 8.0)
+
+        elif t < 10.0:
+            # Phase 2: Continue pushing (5-10s)
             for robot_id in range(self.num_robots):
                 self.set_robot_velocity(robot_id, 5.0, 5.0)
 
-        elif t < 6.0:
-            # Phase 2: Slow push (3-6s)
-            for robot_id in range(self.num_robots):
-                self.set_robot_velocity(robot_id, 2.0, 2.0)
-
-        elif t < 8.0:
-            # Phase 3: Turn and reposition (6-8s)
-            for robot_id in range(self.num_robots):
-                if robot_id % 2 == 0:
-                    self.set_robot_velocity(robot_id, 3.0, -3.0)  # Turn left
-                else:
-                    self.set_robot_velocity(robot_id, -3.0, 3.0)  # Turn right
-
-        elif t < 11.0:
-            # Phase 4: Push from new angle (8-11s)
-            for robot_id in range(self.num_robots):
-                self.set_robot_velocity(robot_id, 4.0, 4.0)
-
         else:
-            # Phase 5: Stop (11s+)
+            # Phase 3: Stop (10s+)
             for robot_id in range(self.num_robots):
                 self.set_robot_velocity(robot_id, 0.0, 0.0)
 
     def demo_scenario_collision_test(self, t):
         """
-        Demo scenario: Robots move in patterns that cause collisions.
+        Demo scenario: All robots drive toward center causing collisions.
 
         This demonstrates:
-        - Robot-robot collisions
+        - Robot-robot collisions (all converging on same point)
         - Robot-box collisions
-        - Contact stability
+        - Contact stability under high forces
         - Physics realism
         """
-        period = 4.0  # Movement cycle period
-
-        for robot_id in range(self.num_robots):
-            phase = (t + robot_id * period / self.num_robots) % period
-
-            if phase < period / 4:
-                # Move forward
-                self.set_robot_velocity(robot_id, 6.0, 6.0)
-            elif phase < period / 2:
-                # Turn
-                self.set_robot_velocity(robot_id, 5.0, -5.0)
-            elif phase < 3 * period / 4:
-                # Move forward again
-                self.set_robot_velocity(robot_id, 6.0, 6.0)
-            else:
-                # Turn opposite direction
-                self.set_robot_velocity(robot_id, -5.0, 5.0)
+        # All robots drive straight at high speed toward box
+        if t < 8.0:
+            for robot_id in range(self.num_robots):
+                self.set_robot_velocity(robot_id, 10.0, 10.0)
+        else:
+            for robot_id in range(self.num_robots):
+                self.set_robot_velocity(robot_id, 0.0, 0.0)
 
     def demo_scenario_straight_lines(self, t):
         """
         Demo scenario: Simple straight-line motion.
 
-        Simplest demo - robots just drive forward until hitting obstacles.
+        Simplest demo - robots just drive forward until hitting box.
         Good for basic contact testing.
         """
-        if t < 5.0:
-            # All robots drive straight
+        if t < 6.0:
+            # All robots drive straight at moderate speed
             for robot_id in range(self.num_robots):
-                self.set_robot_velocity(robot_id, 5.0, 5.0)
+                self.set_robot_velocity(robot_id, 8.0, 8.0)
         else:
             # Stop
             for robot_id in range(self.num_robots):
