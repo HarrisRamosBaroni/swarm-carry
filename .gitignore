@@ -16,3 +16,4 @@ __pycache__/
 .plan
 .papers
 .prompts
+.venv
