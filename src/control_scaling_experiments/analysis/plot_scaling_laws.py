@@ -331,8 +331,17 @@ def main():
         output_dir = script_dir.parent / "figures"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Load logs
-    log_files = [log_dir / f.strip() for f in args.log.split(',')]
+    # Load logs - handle both absolute and relative paths
+    log_files = []
+    for f in args.log.split(','):
+        f = f.strip()
+        p = Path(f)
+        if p.is_absolute() or p.exists():
+            log_files.append(p)
+        else:
+            # Try relative to log_dir
+            log_files.append(log_dir / f)
+
     logs = [load_log(log_file) for log_file in log_files]
 
     if args.labels:
