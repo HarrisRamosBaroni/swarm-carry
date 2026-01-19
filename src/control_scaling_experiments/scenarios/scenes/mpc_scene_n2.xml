@@ -40,13 +40,13 @@
     <geom name="floor" size="0 0 0.05" type="plane" material="groundplane"/>
 
     <!-- Goal marker (visual only) -->
-    <geom name="goal_marker" type="box" size="0.15 0.35 0.01"
+    <geom name="goal_marker" type="box" size="0.05 0.35 0.01"
           pos="3.0 0.0 0.01" rgba="0.3 0.8 0.3 0.3" contype="0" conaffinity="0"/>
 
     <!-- Robots -->
 
     <!-- Robot 0 -->
-    <body name="robot_0_base" pos="-0.65 -0.315 0.033" euler="0 0 0.0">
+    <body name="robot_0_base" pos="-0.55 -0.315 0.033" euler="0 0 0.0">
       <freejoint name="robot_0_joint"/>
       <geom pos="-0.064 0 0.01" quat="1 0 0 0" type="mesh" rgba="0.4 0.4 0.4 1" mesh="waffle_pi_base"/>
       <geom size="0.015 0.0045 0.01" pos="-0.177 -0.0639992 0.005" quat="0.707388 -0.706825 0 0" type="box"/>
@@ -68,7 +68,7 @@
     </body>
 
     <!-- Robot 1 -->
-    <body name="robot_1_base" pos="-0.65 0.315 0.033" euler="0 0 0.0">
+    <body name="robot_1_base" pos="-0.55 0.315 0.033" euler="0 0 0.0">
       <freejoint name="robot_1_joint"/>
       <geom pos="-0.064 0 0.01" quat="1 0 0 0" type="mesh" rgba="0.4 0.4 0.4 1" mesh="waffle_pi_base"/>
       <geom size="0.015 0.0045 0.01" pos="-0.177 -0.0639992 0.005" quat="0.707388 -0.706825 0 0" type="box"/>
@@ -90,10 +90,10 @@
     </body>
 
     <!-- Payload cuboid -->
-    <body name="payload" pos="0.0 0.0 0.2">
+    <body name="payload" pos="0.0 0.0 0.1">
       <freejoint name="payload_joint"/>
-      <inertial pos="0 0 0" mass="4.200" diaginertia="0.087500 0.227500 0.203000"/>
-      <geom name="payload_geom" type="box" size="0.15 0.35 0.2"
+      <inertial pos="0 0 0" mass="0.700" diaginertia="0.002917 0.030917 0.029167"/>
+      <geom name="payload_geom" type="box" size="0.05 0.35 0.1"
             rgba="0.8 0.4 0.2 0.9" friction="0.8 0.005 0.0001"/>
     </body>
   </worldbody>

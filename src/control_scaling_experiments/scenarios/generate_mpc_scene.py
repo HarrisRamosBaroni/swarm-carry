@@ -66,8 +66,8 @@ def generate_mpc_scene(num_robots, push_distance=10.0, output_path=None):
     # Cuboid sizing
     robot_spacing = 0.35  # Each robot gets ~35cm of contact space
     cuboid_length = max(0.5, num_robots * robot_spacing)  # Minimum 0.5m
-    cuboid_width = 0.3  # Fixed width
-    cuboid_height = 0.2  # Fixed height
+    cuboid_width = 0.1  # Fixed width
+    cuboid_height = 0.1  # Fixed height
 
     # Mass scaling: keep density constant, so mass scales with volume
     density = 50  # kg/m^3 (foam-like density, light enough for small robots to push)

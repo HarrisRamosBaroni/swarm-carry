@@ -39,7 +39,7 @@ def plot_solve_time_scaling(
 
     Primary figure for demonstrating computational scaling.
     """
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(4.5, 8))
 
     for log, label in zip(logs, labels):
         runs = log['runs']
