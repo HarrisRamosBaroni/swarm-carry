@@ -1,8 +1,29 @@
 # Problem Statement: Distributed Target Estimation via GBP
 
-We consider $n$ agents estimating a shared target position $x \in \mathbb{R}^2$. Each agent $i$ has a noisy observation $z_i = x + \varepsilon_i$ where $\varepsilon_i \sim \mathcal{N}(0, \sigma^2 I)$. Agents communicate only with neighbors defined by a graph $\mathcal{G} = (\mathcal{V}, \mathcal{E})$ where $\mathcal{V} = \{1, \ldots, n\}$ and $(i,j) \in \mathcal{E}$ if agents $i$ and $j$ can exchange messages.
+We consider $n$ agents estimating a shared target position $x \in \mathbb{R}^2$. Agents communicate only with neighbors defined by a graph $\mathcal{G} = (\mathcal{V}, \mathcal{E})$ where $\mathcal{V} = \{1, \ldots, n\}$ and $(i,j) \in \mathcal{E}$ if agents $i$ and $j$ can exchange messages.
 
-Each agent maintains a Gaussian belief $b_i(x) = \mathcal{N}^{-1}(\eta_i, \Lambda_i)$ in information form, where $\eta_i = \Lambda_i \mu_i$ is the information vector and $\Lambda_i$ is the precision matrix. The observation factor for agent $i$ is $f_i(x) \propto \exp(-\frac{1}{2\sigma^2}\|z_i - x\|^2)$, contributing precision $\Lambda_{\text{obs}} = \sigma^{-2}I$ and information $\eta_{\text{obs},i} = \Lambda_{\text{obs}} z_i$.
+## Observation Model (Simulation)
+
+Each agent $i$ receives a single noisy observation of the true target $x_{\text{true}}$:
+$$z_i = x_{\text{true}} + \varepsilon_i, \quad \varepsilon_i \sim \mathcal{N}(0, \sigma^2 I_2)$$
+
+Default parameters: $x_{\text{true}} = [5, 3]^T$, $\sigma = 0.5$.
+
+## Factor Definitions
+
+**Observation factor** (one per agent): Encodes likelihood of observation given target position.
+$$f_i(x) = \mathcal{N}(z_i \mid x, \sigma^2 I) \propto \exp\left(-\frac{1}{2\sigma^2}\|x - z_i\|^2\right)$$
+
+In information form: precision $\Lambda_{\text{obs}} = \sigma^{-2} I_2$, information vector $\eta_{\text{obs},i} = \Lambda_{\text{obs}} z_i$.
+
+**Consensus factor** (one per edge): Encodes soft constraint that neighboring agents should agree.
+$$g_{ij}(x_i, x_j) \propto \exp\left(-\frac{\lambda}{2}\|x_i - x_j\|^2\right)$$
+
+In the demo, consensus is enforced implicitly through GBP message passing rather than explicit $\lambda$. The cavity message $m_{i \to j}$ sent from agent $i$ to $j$ carries $i$'s belief about $x$ (excluding $j$'s contribution), and upon convergence all $x_i \approx x_j$.
+
+## Belief Representation
+
+Each agent maintains a Gaussian belief $b_i(x) = \mathcal{N}^{-1}(\eta_i, \Lambda_i)$ in information form, where $\eta_i = \Lambda_i \mu_i$ is the information vector and $\Lambda_i$ is the precision matrix.
 
 Gaussian Belief Propagation (GBP) proceeds in synchronous rounds. At each iteration $k$:
 
