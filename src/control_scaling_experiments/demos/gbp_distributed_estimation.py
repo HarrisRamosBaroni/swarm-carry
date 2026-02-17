@@ -78,38 +78,46 @@ class GBPAgent:
     Maintains:
     - Local observation and its precision
     - Current belief on shared variable x
-    - Incoming messages from neighbors
-    - Outgoing messages to neighbors
+    - Incoming messages from neighbors (through consensus factors)
+    - Consensus factor precision λ
+
+    Factor graph structure (per agent i):
+        x_i ---- f_i (observation factor)
+         |
+        g_{ij} (consensus factor to each neighbor j)
+         |
+        x_j (neighbor's variable)
+
+    Messages:
+    - m_{x_i → g_{ij}}: cavity belief (belief excluding g_{ij}'s contribution)
+    - m_{g_{ij} → x_i}: message from consensus factor (computed from neighbor's cavity)
     """
     agent_id: int
     observation: np.ndarray           # z_i ∈ ℝ²
     obs_precision: np.ndarray         # Λ_i = Σ_obs^{-1}
     neighbors: List[int] = field(default_factory=list)
+    consensus_precision: float = 10.0  # λ for consensus factor g_{ij}
 
     # Current belief b_i(x) in information form
     belief_eta: np.ndarray = field(default=None)
     belief_lam: np.ndarray = field(default=None)
 
-    # Messages from neighbors: msg_from[j] = m_{j→i}
-    messages_from: Dict[int, GaussianMessage] = field(default_factory=dict)
-
-    # Messages to neighbors (previous iteration, for cavity computation)
-    messages_to: Dict[int, GaussianMessage] = field(default_factory=dict)
+    # Messages FROM consensus factors: msg_from_factor[j] = m_{g_{ij} → x_i}
+    messages_from_factor: Dict[int, GaussianMessage] = field(default_factory=dict)
 
     def __post_init__(self):
         dim = len(self.observation)
-        # Initialize belief from observation
+        # Initialize belief from observation only
         self.belief_lam = self.obs_precision.copy()
         self.belief_eta = self.obs_precision @ self.observation
 
-        # Initialize messages as uninformative (zero precision)
+        # Initialize incoming factor messages as uninformative (zero precision)
         zero_msg = GaussianMessage(
             eta=np.zeros(dim),
             lam=np.zeros((dim, dim))
         )
         for j in self.neighbors:
-            self.messages_from[j] = zero_msg.copy()
-            self.messages_to[j] = zero_msg.copy()
+            self.messages_from_factor[j] = zero_msg.copy()
 
     @property
     def belief(self) -> GaussianMessage:
@@ -126,47 +134,98 @@ class GBPAgent:
         """Covariance of current belief."""
         return np.linalg.inv(self.belief_lam)
 
-    def compute_outgoing_message(self, to_neighbor: int) -> GaussianMessage:
+    def compute_cavity_to_factor(self, to_neighbor: int) -> GaussianMessage:
         """
-        Compute message to send to neighbor (cavity distribution).
+        Compute message from variable x_i to consensus factor g_{ij}.
 
-        m_{i→j}(x) = b_i(x) / m_{j→i}(x)
+        m_{x_i → g_{ij}} = b_i(x) / m_{g_{ij} → x_i}
 
-        In information form: η_{i→j} = η_i - η_{j→i}, Λ_{i→j} = Λ_i - Λ_{j→i}
+        This is the "cavity" distribution: belief excluding this factor's contribution.
+        In information form: subtract the incoming factor message.
         """
-        incoming = self.messages_from[to_neighbor]
+        incoming = self.messages_from_factor[to_neighbor]
 
-        # Cavity = belief minus incoming message from this neighbor
-        eta_out = self.belief_eta - incoming.eta
-        lam_out = self.belief_lam - incoming.lam
+        # Cavity = belief minus incoming message from this factor
+        eta_cavity = self.belief_eta - incoming.eta
+        lam_cavity = self.belief_lam - incoming.lam
 
         # Ensure positive semi-definite (numerical safety)
-        lam_out = 0.5 * (lam_out + lam_out.T)
-        eigvals = np.linalg.eigvalsh(lam_out)
-        if np.min(eigvals) < 0:
+        lam_cavity = 0.5 * (lam_cavity + lam_cavity.T)
+        eigvals = np.linalg.eigvalsh(lam_cavity)
+        if np.min(eigvals) < 1e-8:
             # Add small regularization
-            lam_out += (abs(np.min(eigvals)) + 1e-6) * np.eye(len(eta_out))
+            lam_cavity += (abs(np.min(eigvals)) + 1e-6) * np.eye(len(eta_cavity))
+
+        return GaussianMessage(eta=eta_cavity, lam=lam_cavity)
+
+    def compute_factor_to_variable_message(
+        self,
+        neighbor_cavity: GaussianMessage
+    ) -> GaussianMessage:
+        """
+        Compute message from consensus factor g_{ij} to variable x_i.
+
+        m_{g_{ij} → x_i}(x_i) = ∫ g_{ij}(x_i, x_j) m_{x_j → g_{ij}}(x_j) dx_j
+
+        For g_{ij}(x_i, x_j) = N(x_i - x_j | 0, λ^{-1}I):
+
+        This integral convolves the neighbor's cavity belief with the consensus factor,
+        yielding a Gaussian with:
+            mean_out = mean_neighbor
+            cov_out = cov_neighbor + λ^{-1}I
+
+        Args:
+            neighbor_cavity: Message from neighbor's variable to the shared factor
+                            m_{x_j → g_{ij}} in information form (η_j, Λ_j)
+
+        Returns:
+            Message m_{g_{ij} → x_i} in information form
+        """
+        dim = len(neighbor_cavity.eta)
+        lambda_I = self.consensus_precision * np.eye(dim)
+
+        # Convert neighbor's cavity to moment form
+        # Handle near-zero precision (uninformative message)
+        if np.linalg.det(neighbor_cavity.lam) < 1e-10:
+            # Neighbor has no information yet, return weak message
+            return GaussianMessage(
+                eta=np.zeros(dim),
+                lam=np.zeros((dim, dim))
+            )
+
+        neighbor_cov = np.linalg.inv(neighbor_cavity.lam)
+        neighbor_mean = neighbor_cov @ neighbor_cavity.eta
+
+        # Convolve with consensus factor: cov_out = cov_neighbor + λ^{-1}I
+        cov_out = neighbor_cov + (1.0 / self.consensus_precision) * np.eye(dim)
+
+        # Mean passes through unchanged
+        mean_out = neighbor_mean
+
+        # Convert back to information form
+        lam_out = np.linalg.inv(cov_out)
+        eta_out = lam_out @ mean_out
 
         return GaussianMessage(eta=eta_out, lam=lam_out)
 
-    def receive_message(self, from_neighbor: int, message: GaussianMessage) -> None:
-        """Store incoming message from neighbor."""
-        self.messages_from[from_neighbor] = message
+    def receive_factor_message(self, from_neighbor: int, message: GaussianMessage) -> None:
+        """Store incoming message from consensus factor with neighbor."""
+        self.messages_from_factor[from_neighbor] = message
 
     def update_belief(self) -> None:
         """
-        Update belief by combining observation with incoming messages.
+        Update belief by combining observation factor with consensus factor messages.
 
-        b_i(x) ∝ f_i(x) × Π_{j∈N(i)} m_{j→i}(x)
+        b_i(x) ∝ f_i(x) × Π_{j∈N(i)} m_{g_{ij} → x_i}(x)
 
-        In information form: sum all η and Λ
+        In information form: sum observation contribution and all factor messages.
         """
-        # Start with observation factor
+        # Start with observation factor contribution
         self.belief_eta = self.obs_precision @ self.observation
         self.belief_lam = self.obs_precision.copy()
 
-        # Add all incoming messages
-        for j, msg in self.messages_from.items():
+        # Add all incoming messages from consensus factors
+        for j, msg in self.messages_from_factor.items():
             self.belief_eta = self.belief_eta + msg.eta
             self.belief_lam = self.belief_lam + msg.lam
 
@@ -183,6 +242,7 @@ class DistributedGBPEstimation:
         num_agents: int,
         target_true: np.ndarray,
         obs_noise_std: float = 0.5,
+        consensus_precision: float = 10.0,
         topology: str = 'ring',
         seed: int = None,
     ):
@@ -193,6 +253,7 @@ class DistributedGBPEstimation:
             num_agents: Number of agents
             target_true: True target position [x, y]
             obs_noise_std: Observation noise standard deviation
+            consensus_precision: λ for consensus factors g_{ij} (higher = stronger)
             topology: Communication topology ('ring', 'line', 'full')
             seed: Random seed for reproducibility
         """
@@ -202,6 +263,7 @@ class DistributedGBPEstimation:
         self.num_agents = num_agents
         self.target_true = np.array(target_true)
         self.obs_noise_std = obs_noise_std
+        self.consensus_precision = consensus_precision
         self.dim = len(target_true)
 
         # Create topology
@@ -237,6 +299,7 @@ class DistributedGBPEstimation:
                 observation=obs,
                 obs_precision=obs_precision,
                 neighbors=topo[i],
+                consensus_precision=consensus_precision,
             )
             self.agents.append(agent)
 
@@ -257,25 +320,38 @@ class DistributedGBPEstimation:
 
     def run_iteration(self) -> float:
         """
-        Run one iteration of synchronous GBP.
+        Run one iteration of synchronous GBP with explicit consensus factors.
+
+        Message passing flow:
+        1. Each agent computes cavity message m_{x_i → g_{ij}} for each neighbor j
+        2. Cavity messages are sent to neighbors (these will be used to compute factor messages)
+        3. Barrier (synchronize)
+        4. Each agent receives neighbor's cavity messages
+        5. Each agent computes factor messages m_{g_{ij} → x_i} from received cavities
+        6. Each agent updates belief
 
         Returns:
             Consensus error (max disagreement between neighbors)
         """
-        # 1. Compute and send outgoing messages
+        # 1. Compute cavity messages and send to neighbors
+        #    Agent i sends m_{x_i → g_{ij}} to agent j
+        #    Agent j will use this to compute m_{g_{ij} → x_j}
         for agent in self.agents:
             for neighbor in agent.neighbors:
-                msg = agent.compute_outgoing_message(neighbor)
-                self.backend.send(agent.agent_id, neighbor, msg)
+                cavity_msg = agent.compute_cavity_to_factor(neighbor)
+                self.backend.send(agent.agent_id, neighbor, cavity_msg)
 
-        # 2. Synchronization barrier (messages are now in mailboxes)
+        # 2. Synchronization barrier
         self.backend.barrier()
 
-        # 3. Receive messages
+        # 3. Receive neighbor's cavity messages and compute factor-to-variable messages
         for agent in self.agents:
             inbox = self.backend.receive(agent.agent_id)
-            for sender_id, msg in inbox:
-                agent.receive_message(sender_id, msg)
+            for sender_id, neighbor_cavity in inbox:
+                # Compute message from consensus factor g_{sender,agent} to agent
+                # This uses neighbor's cavity and passes it through the consensus factor
+                factor_msg = agent.compute_factor_to_variable_message(neighbor_cavity)
+                agent.receive_factor_message(sender_id, factor_msg)
 
         # 4. Update beliefs
         for agent in self.agents:
@@ -471,6 +547,8 @@ Examples:
                        default='ring', help='Communication topology (default: ring)')
     parser.add_argument('--noise', type=float, default=0.5,
                        help='Observation noise std (default: 0.5)')
+    parser.add_argument('--lambda', dest='consensus_precision', type=float, default=10.0,
+                       help='Consensus factor precision λ (default: 10.0)')
     parser.add_argument('--seed', type=int, default=42,
                        help='Random seed (default: 42)')
     parser.add_argument('--max-iter', type=int, default=50,
@@ -512,7 +590,8 @@ Examples:
     print("="*60)
     print(f"  Agents: {args.agents}")
     print(f"  Topology: {args.topology}")
-    print(f"  Observation noise: {args.noise}")
+    print(f"  Observation noise σ: {args.noise}")
+    print(f"  Consensus precision λ: {args.consensus_precision}")
     print()
 
     # Create and run system
@@ -520,6 +599,7 @@ Examples:
         num_agents=args.agents,
         target_true=np.array([5.0, 3.0]),
         obs_noise_std=args.noise,
+        consensus_precision=args.consensus_precision,
         topology=args.topology,
         seed=args.seed,
     )

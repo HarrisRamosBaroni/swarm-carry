@@ -21,16 +21,23 @@ $$g_{ij}(x_i, x_j) = \mathcal{N}(x_i - x_j \mid 0, \lambda^{-1}I) \propto \exp\l
 
 where $\lambda$ is the consensus precision (higher = stronger enforcement).
 
-## Note on Implementation
+## Factor-to-Variable Message Derivation
 
-**IMPORTANT:** The current demo (`gbp_distributed_estimation.py`) implements **belief consensus**, not full GBP with explicit consensus factors. Agents directly exchange beliefs, which converges to the correct mean for this symmetric problem but does not correctly implement the factor-to-variable messages:
+The message from consensus factor $g_{ij}$ to variable $x_i$ is computed by marginalizing out $x_j$:
 
 $$m_{g_{ij} \to x_i}(x_i) = \int g_{ij}(x_i, x_j) \, m_{x_j \to g_{ij}}(x_j) \, dx_j$$
 
-For Gaussian factors and messages, this integral yields (in information form):
-$$\eta_{g_{ij} \to x_i} = \frac{\lambda \Lambda_j}{\lambda I + \Lambda_j} \mu_j, \quad \Lambda_{g_{ij} \to x_i} = \lambda I - \frac{\lambda^2}{\lambda I + \Lambda_j}$$
+For Gaussian consensus factor $g_{ij}(x_i, x_j) = \mathcal{N}(x_i \mid x_j, \lambda^{-1}I)$ and incoming message $m_{x_j \to g_{ij}}(x_j) = \mathcal{N}(x_j \mid \mu_j, \Sigma_j)$, this integral is a convolution of two Gaussians:
 
-where $(\mu_j, \Lambda_j)$ is the incoming message from $x_j$. A correct implementation would require specifying $\lambda$ and computing these messages explicitly. The current "belief consensus" variant is a simplification that works for this demo but should not be assumed equivalent to proper GBP in general settings.
+$$m_{g_{ij} \to x_i}(x_i) = \mathcal{N}(x_i \mid \mu_j, \Sigma_j + \lambda^{-1}I)$$
+
+The mean passes through unchanged; the covariance inflates by $\lambda^{-1}I$ (uncertainty from the consensus constraint).
+
+**Effect of $\lambda$:**
+- High $\lambda$ (strong consensus): small covariance inflation → fast convergence, tight agreement
+- Low $\lambda$ (weak consensus): large covariance inflation → slower convergence, agents trust local observations more
+
+Default: $\lambda = 10.0$. Tunable via `--lambda` argument.
 
 ## Belief Representation
 
