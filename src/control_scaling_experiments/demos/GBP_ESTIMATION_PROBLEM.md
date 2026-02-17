@@ -17,9 +17,20 @@ $$f_i(x) = \mathcal{N}(z_i \mid x, \sigma^2 I) \propto \exp\left(-\frac{1}{2\sig
 In information form: precision $\Lambda_{\text{obs}} = \sigma^{-2} I_2$, information vector $\eta_{\text{obs},i} = \Lambda_{\text{obs}} z_i$.
 
 **Consensus factor** (one per edge): Encodes soft constraint that neighboring agents should agree.
-$$g_{ij}(x_i, x_j) \propto \exp\left(-\frac{\lambda}{2}\|x_i - x_j\|^2\right)$$
+$$g_{ij}(x_i, x_j) = \mathcal{N}(x_i - x_j \mid 0, \lambda^{-1}I) \propto \exp\left(-\frac{\lambda}{2}\|x_i - x_j\|^2\right)$$
 
-In the demo, consensus is enforced implicitly through GBP message passing rather than explicit $\lambda$. The cavity message $m_{i \to j}$ sent from agent $i$ to $j$ carries $i$'s belief about $x$ (excluding $j$'s contribution), and upon convergence all $x_i \approx x_j$.
+where $\lambda$ is the consensus precision (higher = stronger enforcement).
+
+## Note on Implementation
+
+**IMPORTANT:** The current demo (`gbp_distributed_estimation.py`) implements **belief consensus**, not full GBP with explicit consensus factors. Agents directly exchange beliefs, which converges to the correct mean for this symmetric problem but does not correctly implement the factor-to-variable messages:
+
+$$m_{g_{ij} \to x_i}(x_i) = \int g_{ij}(x_i, x_j) \, m_{x_j \to g_{ij}}(x_j) \, dx_j$$
+
+For Gaussian factors and messages, this integral yields (in information form):
+$$\eta_{g_{ij} \to x_i} = \frac{\lambda \Lambda_j}{\lambda I + \Lambda_j} \mu_j, \quad \Lambda_{g_{ij} \to x_i} = \lambda I - \frac{\lambda^2}{\lambda I + \Lambda_j}$$
+
+where $(\mu_j, \Lambda_j)$ is the incoming message from $x_j$. A correct implementation would require specifying $\lambda$ and computing these messages explicitly. The current "belief consensus" variant is a simplification that works for this demo but should not be assumed equivalent to proper GBP in general settings.
 
 ## Belief Representation
 
