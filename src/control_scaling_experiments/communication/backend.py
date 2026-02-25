@@ -25,6 +25,7 @@ class GaussianMessage:
     """
     eta: np.ndarray   # Information vector (precision @ mean)
     lam: np.ndarray   # Precision matrix (inverse covariance)
+    epoch: int = 0    # GBP round this message was sent in (for async backends)
 
     @classmethod
     def from_moments(cls, mean: np.ndarray, cov: np.ndarray) -> 'GaussianMessage':
@@ -57,7 +58,7 @@ class GaussianMessage:
         )
 
     def copy(self) -> 'GaussianMessage':
-        return GaussianMessage(eta=self.eta.copy(), lam=self.lam.copy())
+        return GaussianMessage(eta=self.eta.copy(), lam=self.lam.copy(), epoch=self.epoch)
 
 
 class CommunicationBackend(ABC):
@@ -132,6 +133,18 @@ class CommunicationBackend(ABC):
         For real backends, ensures message delivery before proceeding.
         """
         pass
+
+    @property
+    def is_synchronous(self) -> bool:
+        """Whether barrier() provides true round synchronization.
+
+        Sync backends: barrier() ensures all round-k messages are delivered
+        before any agent proceeds to round k+1.
+
+        Async backends: barrier() is a no-op; algorithms must tolerate
+        stale or missing messages.
+        """
+        return True
 
     def get_stats(self) -> Dict[str, Any]:
         """Get communication statistics."""

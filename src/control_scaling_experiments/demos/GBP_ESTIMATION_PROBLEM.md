@@ -57,6 +57,8 @@ In information form: $\eta_i = \eta_{\text{obs},i} + \sum_j \eta_{j \to i}$, $\L
 
 Convergence is achieved when $\|\mu_i - \mu_j\| < \varepsilon$ for all $(i,j) \in \mathcal{E}$.
 
+**Implementation note on matrix inversions:** Converting between information form $(\eta, \Lambda)$ and moment form $(\mu, \Sigma)$ requires $\Lambda^{-1}$. In this problem these inversions are trivially scalar: since both $\Lambda_{\text{obs}} = \sigma^{-2}I$ and the consensus factor $\lambda^{-1}I$ are scalar multiples of the identity (isotropic), all precision matrices remain scalar multiples of $I$ throughout the algorithm, so inversion reduces to a scalar reciprocal. This would no longer hold for anisotropic noise or non-isotropic consensus factors.
+
 ## Centralized Solution and Consensus Estimate
 
 **Centralized solution:** For uniform observation precision $\Lambda_{\text{obs}} = \sigma^{-2}I$, the optimal fused estimate is the sample mean:

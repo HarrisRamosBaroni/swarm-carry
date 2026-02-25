@@ -244,6 +244,7 @@ class DistributedGBPEstimation:
         obs_noise_std: float = 0.5,
         consensus_precision: float = 10.0,
         topology: str = 'ring',
+        backend=None,
         seed: int = None,
     ):
         """
@@ -254,7 +255,10 @@ class DistributedGBPEstimation:
             target_true: True target position [x, y]
             obs_noise_std: Observation noise standard deviation
             consensus_precision: λ for consensus factors g_{ij} (higher = stronger)
-            topology: Communication topology ('ring', 'line', 'full')
+            topology: Communication topology ('ring', 'line', 'full').
+                      Ignored if backend is provided.
+            backend: Pre-constructed CommunicationBackend. If None, creates a
+                     SimulatedBackend with the given topology string.
             seed: Random seed for reproducibility
         """
         if seed is not None:
@@ -266,20 +270,22 @@ class DistributedGBPEstimation:
         self.consensus_precision = consensus_precision
         self.dim = len(target_true)
 
-        # Create topology
-        if topology == 'ring':
-            topo = create_ring_topology(num_agents)
-        elif topology == 'line':
-            topo = create_line_topology(num_agents)
-        elif topology == 'full':
-            topo = create_full_topology(num_agents)
+        # Use injected backend, or create SimulatedBackend from topology string
+        if backend is not None:
+            self.backend = backend
+            topo = backend.topology
+            self.topology_name = type(backend).__name__
         else:
-            raise ValueError(f"Unknown topology: {topology}")
-
-        self.topology_name = topology
-
-        # Create communication backend
-        self.backend = SimulatedBackend(num_agents, topo)
+            if topology == 'ring':
+                topo = create_ring_topology(num_agents)
+            elif topology == 'line':
+                topo = create_line_topology(num_agents)
+            elif topology == 'full':
+                topo = create_full_topology(num_agents)
+            else:
+                raise ValueError(f"Unknown topology: {topology}")
+            self.topology_name = topology
+            self.backend = SimulatedBackend(num_agents, topo)
 
         # Observation precision (same for all agents)
         obs_cov = (obs_noise_std ** 2) * np.eye(self.dim)
