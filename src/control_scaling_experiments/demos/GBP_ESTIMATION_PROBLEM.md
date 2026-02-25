@@ -55,6 +55,25 @@ In information form: $\eta_{i \to j} = \eta_i - \eta_{j \to i}$, $\Lambda_{i \to
 $$b_i^{(k+1)}(x) \propto f_i(x) \prod_{j \in \mathcal{N}(i)} m_{j \to i}^{(k)}(x)$$
 In information form: $\eta_i = \eta_{\text{obs},i} + \sum_j \eta_{j \to i}$, $\Lambda_i = \Lambda_{\text{obs}} + \sum_j \Lambda_{j \to i}$.
 
-Convergence is achieved when $\|\mu_i - \mu_j\| < \varepsilon$ for all $(i,j) \in \mathcal{E}$. Upon convergence, all agents' beliefs approximate the centralized solution $\hat{x}_{\text{central}} = \frac{1}{n}\sum_{i=1}^n z_i$ (for uniform observation precision).
+Convergence is achieved when $\|\mu_i - \mu_j\| < \varepsilon$ for all $(i,j) \in \mathcal{E}$.
 
-The research objective is to validate the communication backend and GBP implementation by measuring: (1) iterations to convergence vs. topology, (2) consensus quality vs. centralized fusion, and (3) message complexity vs. agent count. This provides the foundation for distributed control where agents must reach consensus on shared state (e.g., payload position) before computing coordinated actions.
+## Centralized Solution and Consensus Estimate
+
+**Centralized solution:** For uniform observation precision $\Lambda_{\text{obs}} = \sigma^{-2}I$, the optimal fused estimate is the sample mean:
+$$\hat{x}_{\text{central}} = \frac{1}{n}\sum_{i=1}^n z_i$$
+
+This is the MLE/MVUE for i.i.d. Gaussian observations with equal variance.
+
+**Consensus estimate:** Defined as the arithmetic mean of all agents' current beliefs:
+$$\hat{x}_{\text{consensus}} = \frac{1}{n}\sum_{i=1}^n \mu_i$$
+
+**Symmetry property:** For this problem with uniform observation precision and symmetric topology, the consensus estimate equals the centralized solution *even before convergence*. This occurs because information flows equally in both directions along the graph - the average belief stays at the optimal point while individual beliefs adjust.
+
+This property does **not** hold in general:
+- Heterogeneous observation precisions → need weighted mean
+- Asymmetric topologies → biased information flow
+- Different consensus estimate definitions → may diverge until convergence
+
+## Research Objective
+
+Validate the communication backend and GBP implementation by measuring: (1) iterations to convergence vs. topology, (2) consensus quality vs. centralized fusion, and (3) message complexity vs. agent count. This provides the foundation for distributed control where agents must reach consensus on shared state (e.g., payload position) before computing coordinated actions.
