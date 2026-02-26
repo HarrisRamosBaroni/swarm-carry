@@ -1,0 +1,152 @@
+<mujoco model="multi_robot_pushing_demo">
+  <compiler angle="radian" meshdir="../models/assets" autolimits="true"/>
+
+  <option integrator="Euler" timestep="0.005">
+    <flag contact="enable" warmstart="enable"/>
+  </option>
+
+  <size njmax="500" nconmax="100"/>
+
+  <statistic center="0 0 0.4" extent="2.5"/>
+
+  <visual>
+    <headlight diffuse="0.6 0.6 0.6" ambient="0.3 0.3 0.3" specular="0 0 0"/>
+    <rgba haze="0.15 0.25 0.35 1"/>
+    <global azimuth="120" elevation="-20"/>
+  </visual>
+
+  <asset>
+    <!-- Textures -->
+    <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="3072"/>
+    <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4"
+             rgb2="0.1 0.2 0.3" markrgb="0.8 0.8 0.8" width="300" height="300"/>
+    <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0.2"/>
+
+    <!-- Robot meshes -->
+    <mesh name="waffle_pi_base" file="waffle_pi_base.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="left_tire" file="left_tire.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="right_tire" file="right_tire.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="lds" file="lds.stl" scale="0.001 0.001 0.001"/>
+  </asset>
+
+  <default>
+    <joint limited="false" armature="0.01" damping="0.1"/>
+    <geom condim="4" friction="1 0.005 0.0001" solimp="0.99 0.99 0.001" solref="0.01 1"/>
+    <equality solref="0.0002 1" solimp="0.99 0.99 0.0001"/>
+  </default>
+
+  <worldbody>
+    <light pos="0 0 2" dir="0 0 -1" directional="true"/>
+    <geom name="floor" size="0 0 0.05" type="plane" material="groundplane"/>
+
+    <!-- Robots -->
+
+    <!-- Robot 0 -->
+    <body name="robot_0_base" pos="0.8 0.0 0.033" euler="0 0 3.141592653589793">
+      <freejoint name="robot_0_joint"/>
+      <geom pos="-0.064 0 0.01" quat="1 0 0 0" type="mesh" rgba="0.4 0.4 0.4 1" mesh="waffle_pi_base"/>
+      <geom size="0.015 0.0045 0.01" pos="-0.177 -0.0639992 0.005" quat="0.707388 -0.706825 0 0" type="box"/>
+      <geom size="0.015 0.0045 0.01" pos="-0.177 0.0640008 0.005" quat="0.707388 -0.706825 0 0" type="box"/>
+      <geom pos="-0.049 0 0.1255" quat="1 0 0 0" type="mesh" rgba="0.3 0.3 0.3 1" mesh="lds"/>
+      <geom size="0.0075 0.015 0.0135" pos="0.078 0 0.107" type="box"/>
+
+      <body name="robot_0_wheel_left" pos="0 0.144 0.033" quat="0.707388 -0.706825 0 0">
+        <inertial pos="0 0 0" quat="-0.000890159 0.706886 0.000889646 0.707326" mass="0.0284989" diaginertia="2.07126e-05 1.11924e-05 1.11756e-05"/>
+        <joint name="robot_0_wheel_left_joint" pos="0 0 0" axis="0 0 1" limited="false" armature="0.01"/>
+        <geom quat="0.707388 0.706825 0 0" type="mesh" rgba="0.3 0.3 0.3 1" mesh="left_tire"/>
+      </body>
+
+      <body name="robot_0_wheel_right" pos="0 -0.144 0.033" quat="0.707388 -0.706825 0 0">
+        <inertial pos="0 0 0" quat="-0.000890159 0.706886 0.000889646 0.707326" mass="0.0284989" diaginertia="2.07126e-05 1.11924e-05 1.11756e-05"/>
+        <joint name="robot_0_wheel_right_joint" pos="0 0 0" axis="0 0 1" limited="false" armature="0.01"/>
+        <geom quat="0.707388 0.706825 0 0" type="mesh" rgba="0.3 0.3 0.3 1" mesh="right_tire"/>
+      </body>
+    </body>
+
+    <!-- Robot 1 -->
+    <body name="robot_1_base" pos="-0.39999999999999986 0.692820323027551 0.033" euler="0 0 -1.047197551196598">
+      <freejoint name="robot_1_joint"/>
+      <geom pos="-0.064 0 0.01" quat="1 0 0 0" type="mesh" rgba="0.4 0.4 0.4 1" mesh="waffle_pi_base"/>
+      <geom size="0.015 0.0045 0.01" pos="-0.177 -0.0639992 0.005" quat="0.707388 -0.706825 0 0" type="box"/>
+      <geom size="0.015 0.0045 0.01" pos="-0.177 0.0640008 0.005" quat="0.707388 -0.706825 0 0" type="box"/>
+      <geom pos="-0.049 0 0.1255" quat="1 0 0 0" type="mesh" rgba="0.3 0.3 0.3 1" mesh="lds"/>
+      <geom size="0.0075 0.015 0.0135" pos="0.078 0 0.107" type="box"/>
+
+      <body name="robot_1_wheel_left" pos="0 0.144 0.033" quat="0.707388 -0.706825 0 0">
+        <inertial pos="0 0 0" quat="-0.000890159 0.706886 0.000889646 0.707326" mass="0.0284989" diaginertia="2.07126e-05 1.11924e-05 1.11756e-05"/>
+        <joint name="robot_1_wheel_left_joint" pos="0 0 0" axis="0 0 1" limited="false" armature="0.01"/>
+        <geom quat="0.707388 0.706825 0 0" type="mesh" rgba="0.3 0.3 0.3 1" mesh="left_tire"/>
+      </body>
+
+      <body name="robot_1_wheel_right" pos="0 -0.144 0.033" quat="0.707388 -0.706825 0 0">
+        <inertial pos="0 0 0" quat="-0.000890159 0.706886 0.000889646 0.707326" mass="0.0284989" diaginertia="2.07126e-05 1.11924e-05 1.11756e-05"/>
+        <joint name="robot_1_wheel_right_joint" pos="0 0 0" axis="0 0 1" limited="false" armature="0.01"/>
+        <geom quat="0.707388 0.706825 0 0" type="mesh" rgba="0.3 0.3 0.3 1" mesh="right_tire"/>
+      </body>
+    </body>
+
+    <!-- Robot 2 -->
+    <body name="robot_2_base" pos="-0.40000000000000036 -0.6928203230275507 0.033" euler="0 0 1.0471975511965972">
+      <freejoint name="robot_2_joint"/>
+      <geom pos="-0.064 0 0.01" quat="1 0 0 0" type="mesh" rgba="0.4 0.4 0.4 1" mesh="waffle_pi_base"/>
+      <geom size="0.015 0.0045 0.01" pos="-0.177 -0.0639992 0.005" quat="0.707388 -0.706825 0 0" type="box"/>
+      <geom size="0.015 0.0045 0.01" pos="-0.177 0.0640008 0.005" quat="0.707388 -0.706825 0 0" type="box"/>
+      <geom pos="-0.049 0 0.1255" quat="1 0 0 0" type="mesh" rgba="0.3 0.3 0.3 1" mesh="lds"/>
+      <geom size="0.0075 0.015 0.0135" pos="0.078 0 0.107" type="box"/>
+
+      <body name="robot_2_wheel_left" pos="0 0.144 0.033" quat="0.707388 -0.706825 0 0">
+        <inertial pos="0 0 0" quat="-0.000890159 0.706886 0.000889646 0.707326" mass="0.0284989" diaginertia="2.07126e-05 1.11924e-05 1.11756e-05"/>
+        <joint name="robot_2_wheel_left_joint" pos="0 0 0" axis="0 0 1" limited="false" armature="0.01"/>
+        <geom quat="0.707388 0.706825 0 0" type="mesh" rgba="0.3 0.3 0.3 1" mesh="left_tire"/>
+      </body>
+
+      <body name="robot_2_wheel_right" pos="0 -0.144 0.033" quat="0.707388 -0.706825 0 0">
+        <inertial pos="0 0 0" quat="-0.000890159 0.706886 0.000889646 0.707326" mass="0.0284989" diaginertia="2.07126e-05 1.11924e-05 1.11756e-05"/>
+        <joint name="robot_2_wheel_right_joint" pos="0 0 0" axis="0 0 1" limited="false" armature="0.01"/>
+        <geom quat="0.707388 0.706825 0 0" type="mesh" rgba="0.3 0.3 0.3 1" mesh="right_tire"/>
+      </body>
+    </body>
+
+    <!-- Objects to push -->
+
+    <!-- Box 0 -->
+    <body name="box_0" pos="0.0 0.0 0.15">
+      <freejoint name="box_0_joint"/>
+      <inertial pos="0 0 0" mass="2.0" diaginertia="0.6666666666666666 0.6666666666666666 0.6666666666666666"/>
+      <geom name="box_0_geom" type="box" size="0.2 0.2 0.15"
+            rgba="0.8 0.3 0.3 0.9" friction="0.7 0.005 0.0001"/>
+    </body>
+
+    <!-- Box 1 -->
+    <body name="box_1" pos="0.5 0.3 0.1">
+      <freejoint name="box_1_joint"/>
+      <inertial pos="0 0 0" mass="1.0" diaginertia="0.3333333333333333 0.3333333333333333 0.3333333333333333"/>
+      <geom name="box_1_geom" type="box" size="0.15 0.15 0.1"
+            rgba="0.8 0.3 0.3 0.9" friction="0.7 0.005 0.0001"/>
+    </body>
+  </worldbody>
+
+  <!-- Actuators -->
+  <actuator>
+
+    <velocity name="robot_0_left_actuator" ctrllimited="true" ctrlrange="-30.0 30.0"
+              gear="1" kv="1.0" joint="robot_0_wheel_left_joint" />
+    <velocity name="robot_0_right_actuator" ctrllimited="true" ctrlrange="-30.0 30.0"
+              gear="1" kv="1.0" joint="robot_0_wheel_right_joint" />
+
+    <velocity name="robot_1_left_actuator" ctrllimited="true" ctrlrange="-30.0 30.0"
+              gear="1" kv="1.0" joint="robot_1_wheel_left_joint" />
+    <velocity name="robot_1_right_actuator" ctrllimited="true" ctrlrange="-30.0 30.0"
+              gear="1" kv="1.0" joint="robot_1_wheel_right_joint" />
+
+    <velocity name="robot_2_left_actuator" ctrllimited="true" ctrlrange="-30.0 30.0"
+              gear="1" kv="1.0" joint="robot_2_wheel_left_joint" />
+    <velocity name="robot_2_right_actuator" ctrllimited="true" ctrlrange="-30.0 30.0"
+              gear="1" kv="1.0" joint="robot_2_wheel_right_joint" />
+  </actuator>
+
+  <!-- Sensors for contact detection -->
+  <sensor>
+    <!-- Contact sensors could be added here for monitoring -->
+  </sensor>
+</mujoco>
