@@ -1,0 +1,3 @@
+[submodule "src/holonomic_dp"]
+	path = src/holonomic_dp
+	url = https://github.com/JunHeonYoon/mujoco_mecanum.git
