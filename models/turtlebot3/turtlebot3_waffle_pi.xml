@@ -1,5 +1,5 @@
 <mujoco model="turtlebot3_waffle_pi">
-  <compiler angle="radian" meshdir="assets" autolimits="true"/>
+  <compiler angle="radian" meshdir="." autolimits="true"/>
 
   <option integrator="implicitfast"/>
 

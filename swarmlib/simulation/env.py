@@ -12,7 +12,7 @@ We extract [fx, fy, torque_z] for each robot body.
 
 from __future__ import annotations
 
-import sys
+import tempfile
 from pathlib import Path
 from typing import Optional
 
@@ -23,13 +23,8 @@ try:
 except ImportError:
     raise ImportError("MuJoCo Python bindings required. Install with: pip install mujoco")
 
-# Make scenarios importable when env.py is run directly
-_pkg_root = Path(__file__).parent.parent
-if str(_pkg_root) not in sys.path:
-    sys.path.insert(0, str(_pkg_root))
-
-from scenarios.generate_mpc_scene import generate_mpc_scene
-from controllers.base_controller import cartesian_to_diff_drive
+from swarmlib.simulation.generate_scene import generate_mpc_scene
+from swarmlib.controllers.base_controller import cartesian_to_diff_drive
 
 
 class SwarmTransportEnv:
@@ -54,6 +49,10 @@ class SwarmTransportEnv:
         the XML; we step physics once per control call.
     push_distance : float
         Push distance used only when auto-generating a scene (scene_xml=None).
+    scenes_dir : str or Path, optional
+        Directory to save auto-generated scene XML files. Defaults to a system
+        temp directory. Pass a path (e.g. Path.cwd() / 'scenes') to keep scenes
+        for inspection or logging.
     """
 
     def __init__(
@@ -63,11 +62,14 @@ class SwarmTransportEnv:
         goal_pos=None,
         dt_control: float = 0.05,
         push_distance: float = 5.0,
+        scenes_dir: Optional[str | Path] = None,
     ):
         self.n_robots = n_robots
         self.dt = dt_control
         self._goal_pos = np.array(goal_pos if goal_pos is not None else [5.0, 0.0, 0.0],
                                   dtype=float)
+
+        self._scenes_dir = Path(scenes_dir) if scenes_dir is not None else Path(tempfile.gettempdir()) / "swarm_scenes"
 
         # Load (or generate) MuJoCo model
         if scene_xml is None:
@@ -86,9 +88,8 @@ class SwarmTransportEnv:
     # ------------------------------------------------------------------
 
     def _auto_generate_scene(self, push_distance: float) -> Path:
-        scene_dir = _pkg_root / "scenarios" / "scenes"
-        scene_dir.mkdir(parents=True, exist_ok=True)
-        scene_path = scene_dir / f"mpc_scene_n{self.n_robots}.xml"
+        self._scenes_dir.mkdir(parents=True, exist_ok=True)
+        scene_path = self._scenes_dir / f"mpc_scene_n{self.n_robots}.xml"
         generate_mpc_scene(
             num_robots=self.n_robots,
             push_distance=push_distance,

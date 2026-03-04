@@ -21,8 +21,6 @@ CommunicationBackend (SimulatedBackend / ROS2Backend), which is a separate conce
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
 from typing import List
 
 import numpy as np
@@ -37,13 +35,7 @@ except ImportError as exc:
         "the bridge node."
     ) from exc
 
-# Locate control_scaling_experiments on the Python path
-_bridge_pkg_dir = Path(__file__).parent.parent.parent  # src/
-_cse_dir = _bridge_pkg_dir / 'control_scaling_experiments'
-if str(_bridge_pkg_dir) not in sys.path:
-    sys.path.insert(0, str(_bridge_pkg_dir))
-
-from control_scaling_experiments.simulation import SwarmTransportEnv  # noqa: E402
+from swarmlib.simulation import SwarmTransportEnv
 
 
 class SwarmMujocoBridgeNode(Node):

@@ -1,0 +1,45 @@
+@.plan/multi_robot_transport_mpc.md @src/control_scaling_experiments/PROBLEM_STATEMENT.md . figures/solve_time_vs_n.pdf shows scaling tau = 9.41e-4 n^2.57 when fitting point for n=2,4,8, and when fitting for n=2,4,8,16 it is more like 6.09e-3n^1.32 and shows n=8 above line of best fit so i suppose that skewed results for the first set of experiments. solution converges which is good. also, i notice that the box mass does seem to affect things:
+MPC SCALING EXPERIMENT SUMMARY
+
+Cuboid dimensions: 0.30 × <varying> × 0.40 m, density 5000kg/m^3:
+Experiment: mpc_scaling_20260102_164739
+----------------------------------------------------------------------
+Date: 2026-01-02T16:30:50.411628
+Push distance: 3.0 m
+Controller config: {'horizon': 10, 'dt': 0.1, 'solver': 'ipopt'}
+
+n      Mean (ms)    Std (ms)     Max (ms)     Converged    Conv. Time (s) 
+----------------------------------------------------------------------
+2      21.04        0.62         32.61        No           N/A            
+4      27.96        2.03         47.27        No           N/A            
+8      197.31       44.45        643.73       No           N/A            
+
+
+Cuboid dimensions: 0.30 × <varying> × 0.40 m:
+Experiment: mpc_scaling_20260102_172115
+----------------------------------------------------------------------
+Date: 2026-01-02T17:17:28.199064
+Push distance: 3.0 m
+Controller config: {'horizon': 10, 'dt': 0.1, 'solver': 'ipopt'}
+
+n      Mean (ms)    Std (ms)     Max (ms)     Converged    Conv. Time (s) 
+----------------------------------------------------------------------
+2      19.63        1.53         35.78        No           N/A            
+4      49.13        25.60        766.70       Yes          9.20           
+
+
+Cuboid dimensions: 0.10 × <varying> × 0.20 m:
+Experiment: mpc_scaling_20260104_105906
+----------------------------------------------------------------------
+Date: 2026-01-04T10:46:34.999268
+Push distance: 3.0 m
+Controller config: {'horizon': 10, 'dt': 0.1, 'solver': 'ipopt'}
+
+n      Mean (ms)    Std (ms)     Max (ms)     Converged    Conv. Time (s) 
+----------------------------------------------------------------------
+2      7.61         3.30         22.81        No           N/A            
+4      11.73        5.32         44.50        Yes          5.16           
+8      119.72       61.93        481.16       Yes          4.81           
+16     232.28       146.57       1000.91      Yes          4.75           
+
+and the simulations i run when box is lighter run faster when i just monitor by eye the terminal prints and how fast an experiment completes. is there an actual theory/hypothesis as for why? does this lighter weight mean robot motion agrees more with the kinematic coupling assumption $X_{t+1} = X_t + B(X_t) U_t \Delta t$ in a way that impacts solve time? perhaps a brief couple of sentences can describe the phenomenon for my technical report?

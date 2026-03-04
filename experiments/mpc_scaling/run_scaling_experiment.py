@@ -14,11 +14,8 @@ from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Any
 
-import sys
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from controllers import CentralizedMPC
-from simulation import SwarmTransportEnv
+from swarmlib.controllers import CentralizedMPC
+from swarmlib.simulation import SwarmTransportEnv
 
 
 class MPCExperimentRunner:

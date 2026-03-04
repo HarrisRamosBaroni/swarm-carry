@@ -24,8 +24,6 @@ goal_theta        : float  — goal orientation
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
 from typing import List, Optional
 
 import numpy as np
@@ -39,12 +37,7 @@ except ImportError as exc:
         "rclpy / std_msgs not found. Source a ROS2 workspace first."
     ) from exc
 
-# Locate control_scaling_experiments package
-_pkg_src = Path(__file__).parent.parent.parent.parent  # src/
-if str(_pkg_src) not in sys.path:
-    sys.path.insert(0, str(_pkg_src))
-
-from control_scaling_experiments.communication.ros2_backend import SingleAgentROS2Backend  # noqa
+from swarmlib.communication.ros2_backend import SingleAgentROS2Backend
 
 
 class AgentControllerNode(Node):

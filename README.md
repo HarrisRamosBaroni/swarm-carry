@@ -1,332 +1,226 @@
-# ROS2 Gazebo Robotics Simulation
+# Swarm Carry
 
-A ROS2 Jazzy + Gazebo Harmonic simulation template for robotics research and development. Currently contains an inverted pendulum control example; will be adapted for multi-agent payload transport.
+Research platform for multi-robot cooperative payload transport. Multiple
+TurtleBot3 Waffle Pi robots push a payload to a goal position. The stack
+runs as pure Python (MuJoCo only) or over ROS2 Jazzy for sim-to-real transfer.
 
-## Quick Start
+---
 
-Choose your preferred workflow:
+## Repo structure
 
-### Option A: Docker + X11 (Ubuntu/Linux - Fastest)
+```
+swarmlib/          Core Python library — no ROS2 required
+  controllers/     BaseController interface + CentralizedMPC
+  communication/   SimulatedBackend, AsyncSimulatedBackend, ROS2Backend
+  simulation/      SwarmTransportEnv (MuJoCo step/reset), scene generator
 
-Best for Ubuntu/Linux users. GUI windows appear directly on your desktop.
+src/               ROS2 workspace (colcon build runs here)
+  swarm_mujoco_bridge/   MuJoCo physics exposed as ROS2 pub/sub
+  swarm_agent/           Per-robot controller node
+  swarm_central/         Centralized controller node
+
+models/            Robot model assets
+  turtlebot3/      TurtleBot3 Waffle Pi mesh files + standalone XML
+  holonomic_dp/    Summit XL Steel model (git submodule, mecanum demo only)
+
+experiments/
+  mpc_scaling/     MPC solve-time vs n_robots scaling study
+  gbp_estimation/  Gaussian Belief Propagation distributed estimation demos
+
+demos/
+  mujoco_swarm_demo/    Visual contact/physics validation (no ROS2)
+  mecanum_ros2_demo/    Summit XL Steel mecanum drive via ROS2
+```
+
+---
+
+## Setup
 
 ```bash
-# Start container (auto-detects X11)
-./scripts/docker-run.sh
+git clone <repo> && cd swarm-carry
+git submodule update --init models/holonomic_dp
 
-# Inside container: setup, build, run
-./scripts/setup.sh
-export GZ_VERSION=harmonic
-./scripts/build.sh
-source install/setup.bash
-./scripts/run.sh
+# Core library (MuJoCo + numpy — no ROS2 needed)
+pip install -e swarmlib/
+
+# ROS2 workspace (only needed for bridge/agent/central nodes)
+source /opt/ros/jazzy/setup.bash
+cd src && colcon build --symlink-install && source install/setup.bash
 ```
 
-See [docs/x11-setup.md](docs/x11-setup.md) for details.
+---
 
-### Option B: Docker + VNC (Windows/Mac/Linux)
+## Run a pure-Python simulation
 
-Works on all platforms. Connect with VNC client or browser.
+```python
+from swarmlib.simulation import SwarmTransportEnv
+import numpy as np
+
+env = SwarmTransportEnv(n_robots=4, goal_pos=[5.0, 0.0, 0.0])
+obs = env.reset()
+
+for _ in range(500):
+    # obs keys: 'payload' (6,), 'robots' (n,4), 'forces' (n,3)
+    controls = np.zeros((4, 2))   # [vx, vy] per robot, m/s world frame
+    obs = env.step(controls)
+
+env.close()
+```
+
+Scene XML is auto-generated and written to the system temp dir by default.
+Pass `scenes_dir=Path("my/dir")` to save scenes for inspection.
+
+---
+
+## Write a controller
+
+Subclass `BaseController`. The only requirement: `compute_control` returns
+`(n, 2)` Cartesian `[vx, vy]` in m/s (world frame). Diff-drive conversion
+is handled internally by the environment.
+
+```python
+from swarmlib.controllers import BaseController
+import numpy as np
+
+class MyController(BaseController):
+    def compute_control(self, payload_state, robot_states, goal_state,
+                        dt, forces=None):
+        # payload_state: (6,) [x, y, theta, vx, vy, omega]
+        # robot_states:  (n, 4) [x, y, vx, vy]
+        # goal_state:    (3,) [x_goal, y_goal, theta_goal]
+        # forces:        (n, 3) [fx, fy, torque_z]
+        return np.zeros((self.num_robots, 2))
+
+    def reset(self):
+        pass
+```
+
+Plug it into a node by setting `self.controller = MyController(...)` in
+`src/swarm_agent/swarm_agent/agent_controller_node.py` or
+`src/swarm_central/swarm_central/central_controller_node.py`.
+
+---
+
+## Communication backend (distributed algorithms)
+
+`CommunicationBackend` handles peer-to-peer algorithm messages (GBP beliefs,
+factor graph messages, etc.) independently of the physics bridge.
+
+```python
+from swarmlib.communication.backend import SimulatedBackend, create_ring_topology
+from swarmlib.communication.ros2_backend import ROS2Backend
+
+topo = create_ring_topology(4)
+
+# Testing — no ROS2 needed:
+backend = SimulatedBackend(num_agents=4, topology=topo)
+
+# Real networked deployment:
+backend = ROS2Backend(num_agents=4, topology=topo)
+
+# API is identical:
+backend.broadcast(from_id=0, message=my_gaussian_msg)
+backend.barrier()
+messages = backend.receive(agent_id=1)
+```
+
+See `experiments/gbp_estimation/` for working examples with dropout and delay.
+
+---
+
+## Full ROS2 simulation
+
+**Terminal 1 — physics bridge:**
+```bash
+source /opt/ros/jazzy/setup.bash && source src/install/setup.bash
+ros2 launch swarm_mujoco_bridge sim.launch.py n_robots:=2 push_distance:=5.0
+```
+
+Verify it's running:
+```bash
+ros2 topic echo /swarm/payload/state
+ros2 topic echo /swarm/robot_0/force
+```
+
+**Terminal 2 — controller (pick one):**
+```bash
+# Centralized (laptop runs one node for all robots):
+ros2 launch swarm_central central.launch.py n_robots:=2 goal_x:=5.0
+
+# Decentralized (one node per robot, same machine or distributed):
+ros2 launch swarm_agent agent.launch.py agent_id:=0 neighbor_ids:="1" goal_x:=5.0
+ros2 launch swarm_agent agent.launch.py agent_id:=1 neighbor_ids:="0" goal_x:=5.0
+```
+
+Controller nodes do not know whether they talk to sim or real hardware —
+the topic interface is identical.
+
+---
+
+## Topic map
+
+```
+/swarm/payload/state        ← bridge (sim) or payload sensor node (real)
+/swarm/robot_{i}/state      ← bridge (sim) or robot odometry (real)
+/swarm/robot_{i}/force      ← bridge (sim) or F/T sensor (real)
+/swarm/robot_{i}/cmd_vel    → applied to MuJoCo actuators (sim) or motor controller (real)
+/swarm/agent_{i}/outbox     ← GBP / distributed algorithm peer messages
+```
+
+---
+
+## Real robot deployment (TurtleBot3)
+
+| Machine | Process |
+|---------|---------|
+| Laptop | `swarm_mujoco_bridge` (sim) or nothing (real hardware) |
+| Each TurtleBot3 | `swarm_agent agent_node` — one per robot |
+| Laptop or any machine | `swarm_central central_node` (centralized methods only) |
 
 ```bash
-# 1. Start container
-./scripts/docker-run.sh
+# On each TurtleBot3:
+ros2 launch swarm_agent agent.launch.py agent_id:=0 neighbor_ids:="1,2" goal_x:=5.0
 
-# 2. Inside container, start VNC server
-./scripts/start-vnc.sh
-
-# 3. Connect with VNC client (TigerVNC, RealVNC, Remmina)
-#    Host: localhost:5901
-#    Password: vncpass
-
-# OR use browser (noVNC):
-./scripts/start-novnc.sh
-# Then open: http://localhost:6080/vnc.html
-
-# 4. In VNC desktop or separate terminal: setup and run
-./scripts/setup.sh
-export GZ_VERSION=harmonic
-./scripts/build.sh
-source install/setup.bash
-./scripts/run.sh
+# On laptop (centralized):
+ros2 launch swarm_central central.launch.py n_robots:=3 goal_x:=5.0
 ```
 
-See [docs/vnc-setup.md](docs/vnc-setup.md) for client installation and details.
+---
 
-### Option C: VSCode Dev Container (Optional)
-
-If you prefer VSCode integration:
+## Experiments
 
 ```bash
-# 1. Open folder in VSCode
-# 2. Command palette: "Dev Containers: Reopen in Container"
-# 3. Start VNC: ./scripts/start-vnc.sh
-# 4. Connect with VNC client or browser
-# 5. Run scripts as above
+# MPC scaling study (solve time vs number of robots):
+cd experiments/mpc_scaling
+python run_scaling_experiment.py --n-values 2,4,8 --distance 5.0
+
+# GBP distributed estimation demos:
+cd experiments/gbp_estimation
+python gbp_distributed_estimation.py
+python test_async_dropout.py
 ```
 
-See [docs/vscode-setup.md](docs/vscode-setup.md) for details.
+---
 
-### Option D: Native Installation
-
-Install ROS2 and Gazebo directly on your system (no containers).
+## Demos
 
 ```bash
-# 1. Install ROS2 Jazzy: https://docs.ros.org/en/jazzy/Installation.html
-# 2. Install Gazebo Harmonic: https://gazebosim.org/docs/harmonic/install
-# 3. Clone this repo and build:
-./scripts/setup.sh
-export GZ_VERSION=harmonic
-./scripts/build.sh
-source install/setup.bash
+# Physics/contact validation (no ROS2):
+cd demos/mujoco_swarm_demo
+python scripts/demo.py
 
-# 4. Run simulation
-./scripts/run.sh
+# Mecanum drive (requires ROS2 + holonomic_dp submodule):
+cd demos/mecanum_ros2_demo
+python demo.py
 ```
 
-## Project Structure
-
-```
-├── .devcontainer/          # Docker container configuration
-│   ├── Dockerfile          # Container image definition
-│   ├── devcontainer.json   # Default (noVNC)
-│   ├── devcontainer-x11.json     # X11 variant (Linux)
-│   └── devcontainer-novnc.json   # noVNC variant (all platforms)
-│
-├── docs/                   # Documentation
-│   ├── x11-setup.md        # X11 display forwarding (Linux)
-│   ├── novnc-setup.md      # Browser-based GUI access
-│   ├── vscode-setup.md     # VSCode integration (optional)
-│   └── architecture.md     # System technical details
-│
-├── scripts/                # Workflow scripts
-│   ├── setup.sh            # Install dependencies
-│   ├── build.sh            # Build ROS2 workspace
-│   ├── run.sh              # Launch simulation
-│   ├── docker-run.sh       # Start Docker container
-│   ├── docker-shell.sh     # Open shell in running container
-│   ├── start-vnc.sh        # Start VNC server (in container)
-│   ├── start-novnc.sh      # Start noVNC web interface
-│   └── stop-vnc.sh         # Stop VNC services
-│
-└── src/                    # ROS2 workspace source
-    ├── inverted_pendulum/  # Example packages (to be adapted)
-    │   ├── inverted_pendulum_description/   # Robot models (URDF/SDF)
-    │   ├── inverted_pendulum_gazebo/        # Gazebo worlds and config
-    │   ├── inverted_pendulum_controller/    # Control algorithms
-    │   └── inverted_pendulum_bringup/       # Launch files
-    │
-    └── ros2.repos          # External dependencies
-```
-
-## Development Workflow
-
-### First Time Setup
-
-1. **Choose your environment** (Docker or native)
-2. **Install dependencies**: `./scripts/setup.sh`
-3. **Set Gazebo version**: `export GZ_VERSION=harmonic` (add to `~/.bashrc` to persist)
-4. **Build workspace**: `./scripts/build.sh`
-5. **Source workspace**: `source install/setup.bash` (or add to `~/.bashrc`)
-
-### Making Changes
-
-```bash
-# 1. Edit code in src/
-# 2. Rebuild
-./scripts/build.sh
-
-# 3. Source (if new packages or launch files)
-source install/setup.bash
-
-# 4. Test
-./scripts/run.sh
-```
-
-**Note**: With `--symlink-install`, Python changes don't need rebuild. C++ changes do.
-
-### Build Types
-
-```bash
-# Release (optimized, default)
-./scripts/build.sh
-
-# Debug (with symbols)
-BUILD_TYPE=Debug ./scripts/build.sh
-
-# Release with debug info
-BUILD_TYPE=RelWithDebInfo ./scripts/build.sh
-```
-
-## Current Example: Inverted Pendulum
-
-The repo currently contains an inverted pendulum on cart simulation with control. This demonstrates:
-- ROS2 + Gazebo integration
-- ros2_control framework
-- URDF/SDF robot modeling
-- Launch file composition
-
-### Running the Example
-
-```bash
-# After setup and build
-source install/setup.bash
-export GZ_VERSION=harmonic
-ros2 launch inverted_pendulum_bringup inverted_pendulum.launch.py
-
-# GUI access:
-# - X11: Windows appear on desktop
-# - noVNC: Open http://localhost:6080/vnc.html
-```
-
-**Important**: After stopping (Ctrl+C), wait 30 seconds before restarting to allow clean shutdown.
-
-### System Architecture
-
-See [docs/architecture.md](docs/architecture.md) for detailed explanation of:
-- Package organization
-- Data flow (Gazebo → ROS2 → Controller → Gazebo)
-- ros2_control integration
-- Configuration files
-
-## Future Development: Multi-Agent Payload Transport
-
-This repo will be adapted for research on distributed multi-agent payload transport. Planned features:
-- Multiple robot agents (ground/aerial)
-- Payload attachment and manipulation
-- Distributed control algorithms
-- Formation control and planning
-
-The current structure serves as a template demonstrating ROS2/Gazebo best practices.
-
-## Environment Configuration
-
-Copy `.env.example` to `.env` and customize:
-
-```bash
-cp .env.example .env
-# Edit .env with your preferences
-```
-
-Variables:
-- `ROS_DISTRO`: ROS2 version (default: jazzy)
-- `GZ_VERSION`: Gazebo version (default: harmonic)
-- `BUILD_TYPE`: Compilation mode (Release/Debug/RelWithDebInfo)
-
-## GUI Options Comparison
-
-| Method | Platform | Performance | Client Installation |
-|--------|----------|-------------|---------------------|
-| **X11** | Linux, WSL2 | Excellent | None (built-in) |
-| **VNC Client** | All | Good | One-time (TigerVNC, etc.) |
-| **noVNC (Browser)** | All | Good | None |
-| **Native** | All | Excellent | ROS2 + Gazebo install |
-
-**Recommendation**:
-- **Ubuntu/Linux**: Use X11 (fastest, zero setup)
-- **Windows/Mac**: Use VNC client (install once) or noVNC (browser)
-- **Serious development**: Consider native installation
-
-## Tips
-
-### VSCode Integration (Optional)
-
-VSCode is completely optional but provides nice features:
-- Integrated terminal with auto-sourcing
-- Task shortcuts (Ctrl+Shift+B to build)
-- IntelliSense for C++/Python
-- ROS2 debugging
-
-See [docs/vscode-setup.md](docs/vscode-setup.md) to set up.
-
-### Multiple Terminals
-
-**Docker container access**:
-```bash
-# Open additional shell in running container
-./scripts/docker-shell.sh
-```
-
-**VSCode**: Just open new integrated terminal (automatically inside container)
-
-### Gazebo Performance
-
-If Gazebo is slow:
-1. Using software rendering (Docker): This is normal, consider native install
-2. Enable GPU acceleration: See [docs/x11-setup.md](docs/x11-setup.md) GPU section
-3. Lower physics update rate in world file
-
-### Clean Build
-
-```bash
-# Remove all build artifacts
-rm -rf build/ install/ log/
-
-# Or use sudo if permission issues
-sudo rm -rf build/ install/ log/
-sudo py3clean .
-
-# Then rebuild
-./scripts/build.sh
-```
-
-## Documentation
-
-- **[docs/x11-setup.md](docs/x11-setup.md)**: X11 display forwarding for Linux
-- **[docs/vnc-setup.md](docs/vnc-setup.md)**: VNC client and noVNC browser access
-- **[docs/vscode-setup.md](docs/vscode-setup.md)**: VSCode integration (optional)
-- **[docs/architecture.md](docs/architecture.md)**: Technical system overview
-
-External:
-- [ROS2 Documentation](https://docs.ros.org/en/jazzy/)
-- [Gazebo Harmonic Docs](https://gazebosim.org/docs/harmonic)
-- [ros2_control](https://control.ros.org/)
-
-## Troubleshooting
-
-### "Cannot find package"
-
-```bash
-# Install dependencies
-./scripts/setup.sh
-
-# Rebuild and source
-./scripts/build.sh
-source install/setup.bash
-```
-
-### "Multiple controller managers"
-
-Previous simulation didn't clean up. Wait 30 seconds after Ctrl+C before restarting.
-
-### "Cannot open display" (Docker)
-
-**X11 mode**: Script handles this automatically
-
-**VNC mode**: Start VNC first with `./scripts/start-vnc.sh`
-
-See platform-specific docs for details.
-
-### GUI is slow/laggy
-
-- **Docker**: Normal with software rendering. Use native install or GPU forwarding.
-- **noVNC**: Lower resolution or use X11 on Linux.
-
-## Contributing
-
-This is a research project template. When adapting for multi-agent work:
-
-1. Create new packages in `src/` (not under `inverted_pendulum/`)
-2. Follow naming convention: `<project>_description`, `<project>_control`, etc.
-3. Update this README with new launch commands
-4. Keep documentation up to date
-
-## License
-
-See [LICENSE](LICENSE) file.
-
-## Acknowledgments
-
-Based on [athackst/vscode_ros2_workspace](https://github.com/athackst/vscode_ros2_workspace) template.
-
-Adapted for ROS2 Jazzy + Gazebo Harmonic with simplified onboarding.
+---
+
+## Notes for teammates
+
+- After pulling: `git submodule sync && git submodule update --init models/holonomic_dp`
+- The `swarmlib` venv install is editable (`pip install -e`), so local edits
+  take effect immediately without reinstalling.
+- ROS2 packages import from `swarmlib` directly — no `sys.path` hacks needed.
+- `colcon build` only covers `src/`. Everything else (`swarmlib`, `experiments`,
+  `demos`) is plain Python.

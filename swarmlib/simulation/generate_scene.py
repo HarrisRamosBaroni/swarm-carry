@@ -8,6 +8,10 @@ import argparse
 import math
 from pathlib import Path
 
+# Absolute path to robot mesh assets — works regardless of where the XML is saved.
+# Relies on pip install -e . so __file__ always points to the source tree.
+_ASSETS_DIR = (Path(__file__).parent.parent.parent / "models" / "turtlebot3").resolve()
+
 
 def generate_robot_body(robot_id, pos_x, pos_y, pos_z=0.0, yaw=0.0):
     """Generate XML for a single TurtleBot3 instance."""
@@ -114,7 +118,7 @@ def generate_mpc_scene(num_robots, push_distance=10.0, output_path=None):
 
     # Complete scene XML
     xml_content = f'''<mujoco model="mpc_scaling_experiment">
-  <compiler angle="radian" meshdir="../../../mujoco_swarm_demo/models/assets" autolimits="true"/>
+  <compiler angle="radian" meshdir="{_ASSETS_DIR}" autolimits="true"/>
 
   <option integrator="Euler" timestep="0.005">
     <flag contact="enable" warmstart="enable"/>

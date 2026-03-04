@@ -100,13 +100,13 @@ if not _ROS2:
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-_REPO_ROOT = Path(__file__).parent.parent
-_SCENE_XML = _REPO_ROOT / "holonomic_dp" / "robots" / "summit_xl_description" / "summit_xls.xml"
+_REPO_ROOT = Path(__file__).parent.parent.parent
+_SCENE_XML = _REPO_ROOT / "models" / "holonomic_dp" / "robots" / "summit_xl_description" / "summit_xls.xml"
 
 if not _SCENE_XML.exists():
     sys.exit(
         f"Scene XML not found: {_SCENE_XML}\n"
-        "Run: git submodule update --init src/holonomic_dp"
+        "Run: git submodule update --init models/holonomic_dp"
     )
 
 # ---------------------------------------------------------------------------
