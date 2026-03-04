@@ -1,0 +1,10 @@
+swarm_mujoco_bridge:
+  ros__parameters:
+    n_robots: 2
+    scene_xml: ""          # empty = auto-generate from n_robots + push_distance
+    sim_frequency: 200.0   # Hz — physics sub-steps per second
+    control_frequency: 50.0  # Hz — cmd_vel applied + states published
+    push_distance: 5.0     # metres (auto-gen only)
+    goal_x: 5.0
+    goal_y: 0.0
+    goal_theta: 0.0
