@@ -10,6 +10,38 @@ import numpy as np
 from typing import Dict, Any, Optional
 
 
+def cartesian_to_diff_drive(
+    vx: float,
+    vy: float,
+    heading_rad: float,
+    wheel_base: float = 0.287,
+    wheel_radius: float = 0.033,
+) -> tuple:
+    """
+    Project a holonomic [vx, vy] command onto a differential-drive robot.
+
+    The robot can only move along its heading axis, so lateral velocity is
+    dropped and only the forward component is used. The returned wheel speeds
+    are in rad/s.
+
+    Args:
+        vx: Desired x-velocity in world frame (m/s)
+        vy: Desired y-velocity in world frame (m/s)
+        heading_rad: Robot heading (yaw) in radians
+        wheel_base: Distance between wheels in metres (default: TurtleBot3 0.287 m)
+        wheel_radius: Wheel radius in metres (default: TurtleBot3 0.033 m)
+
+    Returns:
+        (v_left, v_right): Left and right wheel angular velocities in rad/s
+    """
+    # Project world-frame velocity onto robot heading to get forward speed
+    v_linear = vx * np.cos(heading_rad) + vy * np.sin(heading_rad)
+    omega = 0.0  # No angular velocity command from Cartesian interface
+    v_left = (v_linear - omega * wheel_base / 2.0) / wheel_radius
+    v_right = (v_linear + omega * wheel_base / 2.0) / wheel_radius
+    return v_left, v_right
+
+
 class BaseController(ABC):
     """Abstract base class for multi-robot transport controllers."""
 
@@ -32,19 +64,21 @@ class BaseController(ABC):
         payload_state: np.ndarray,
         robot_states: np.ndarray,
         goal_state: np.ndarray,
-        dt: float
+        dt: float,
+        forces: np.ndarray = None,
     ) -> np.ndarray:
         """
         Compute control commands for all robots.
 
         Args:
-            payload_state: [x, y, theta, vx, vy, omega] - payload pose and velocity
+            payload_state: (6,) [x, y, theta, vx, vy, omega]
             robot_states: (n, 4) array of [x, y, vx, vy] for each robot
-            goal_state: [x_goal, y_goal, theta_goal] - target payload pose
+            goal_state: (3,) [x_goal, y_goal, theta_goal]
             dt: Time step (seconds)
+            forces: (n, 3) [fx, fy, torque_z] external forces per robot, or None
 
         Returns:
-            controls: (n, 2) array of [left_wheel_vel, right_wheel_vel] for each robot
+            controls: (n, 2) array of [vx, vy] in m/s (Cartesian, world frame)
         """
         pass
 

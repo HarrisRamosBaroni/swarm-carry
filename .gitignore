@@ -18,3 +18,4 @@ __pycache__/
 .prompts
 .venv
 **/my_temp
+.notes

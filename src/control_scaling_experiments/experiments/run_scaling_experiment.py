@@ -14,19 +14,11 @@ from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Any
 
-try:
-    import mujoco
-    import mujoco.viewer
-except ImportError:
-    print("Error: MuJoCo Python bindings not found.")
-    print("Install with: pip install mujoco")
-    exit(1)
-
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from controllers import CentralizedMPC
-from scenarios.generate_mpc_scene import generate_mpc_scene
+from simulation import SwarmTransportEnv
 
 
 class MPCExperimentRunner:
@@ -46,100 +38,24 @@ class MPCExperimentRunner:
             num_robots: Number of robots
             push_distance: Distance to push payload
             controller_config: Configuration for MPC controller
-            use_viewer: Whether to show visualization
+            use_viewer: Whether to show visualization (currently unused in env loop)
         """
         self.num_robots = num_robots
         self.push_distance = push_distance
         self.use_viewer = use_viewer
         self.controller_config = controller_config or {}
 
-        # Generate scene
-        self.scene_path = self._generate_scene()
-
-        # Load MuJoCo model
-        self.model = mujoco.MjModel.from_xml_path(str(self.scene_path))
-        self.data = mujoco.MjData(self.model)
+        # Create environment (auto-generates scene if needed)
+        self.env = SwarmTransportEnv(
+            n_robots=num_robots,
+            goal_pos=[push_distance, 0.0, 0.0],
+            push_distance=push_distance,
+        )
 
         # Initialize controller
         self.controller = CentralizedMPC(num_robots, controller_config)
 
-        # Get body/actuator IDs
-        self._setup_ids()
-
-        # Goal state
-        self.goal_state = np.array([push_distance, 0.0, 0.0])
-
         print(f"Experiment initialized: {num_robots} robots, {push_distance}m push")
-
-    def _generate_scene(self) -> Path:
-        """Generate scene file for this experiment."""
-        scene_dir = Path(__file__).parent.parent / "scenarios" / "scenes"
-        scene_dir.mkdir(parents=True, exist_ok=True)
-        scene_path = scene_dir / f"mpc_scene_n{self.num_robots}.xml"
-
-        generate_mpc_scene(
-            num_robots=self.num_robots,
-            push_distance=self.push_distance,
-            output_path=str(scene_path)
-        )
-        return scene_path
-
-    def _setup_ids(self):
-        """Get MuJoCo body and actuator IDs."""
-        # Payload
-        self.payload_id = mujoco.mj_name2id(
-            self.model, mujoco.mjtObj.mjOBJ_BODY, "payload"
-        )
-
-        # Robot actuators
-        self.robot_actuators = []
-        for i in range(self.num_robots):
-            left_id = mujoco.mj_name2id(
-                self.model, mujoco.mjtObj.mjOBJ_ACTUATOR, f"robot_{i}_left_actuator"
-            )
-            right_id = mujoco.mj_name2id(
-                self.model, mujoco.mjtObj.mjOBJ_ACTUATOR, f"robot_{i}_right_actuator"
-            )
-            self.robot_actuators.append((left_id, right_id))
-
-        # Robot bodies
-        self.robot_body_ids = []
-        for i in range(self.num_robots):
-            body_id = mujoco.mj_name2id(
-                self.model, mujoco.mjtObj.mjOBJ_BODY, f"robot_{i}_base"
-            )
-            self.robot_body_ids.append(body_id)
-
-    def get_payload_state(self) -> np.ndarray:
-        """Get payload state [x, y, theta, vx, vy, omega]."""
-        pos = self.data.xpos[self.payload_id][:2]  # x, y
-        quat = self.data.xquat[self.payload_id]
-        vel = self.data.cvel[self.payload_id]
-
-        # Convert quaternion to euler angle (yaw)
-        # For small rotations around z-axis: theta ≈ 2 * quat[3] if quat[0] > 0
-        qw, qx, qy, qz = quat
-        theta = np.arctan2(2*(qw*qz + qx*qy), 1 - 2*(qy**2 + qz**2))
-
-        vx, vy = vel[3:5]  # Linear velocity
-        omega = vel[2]  # Angular velocity around z
-
-        return np.array([pos[0], pos[1], theta, vx, vy, omega])
-
-    def get_robot_states(self) -> np.ndarray:
-        """Get robot states (n, 4) [x, y, vx, vy]."""
-        states = np.zeros((self.num_robots, 4))
-        for i, body_id in enumerate(self.robot_body_ids):
-            pos = self.data.xpos[body_id][:2]
-            vel = self.data.cvel[body_id][3:5]
-            states[i] = [pos[0], pos[1], vel[0], vel[1]]
-        return states
-
-    def set_robot_controls(self, controls: np.ndarray):
-        """Set robot wheel velocities."""
-        for i, (left_id, right_id) in enumerate(self.robot_actuators):
-            self.data.ctrl[left_id] = controls[i, 0]
-            self.data.ctrl[right_id] = controls[i, 1]
 
     def run_experiment(
         self,
@@ -158,11 +74,9 @@ class MPCExperimentRunner:
         """
         print(f"Running experiment (n={self.num_robots})...")
 
-        # Reset
-        mujoco.mj_resetData(self.model, self.data)
+        obs = self.env.reset()
         self.controller.reset()
 
-        # Data collection
         payload_trajectory = []
         solve_times = []
         contact_counts = []
@@ -171,93 +85,37 @@ class MPCExperimentRunner:
         converged = False
         convergence_time = None
 
-        if self.use_viewer:
-            # Run with viewer
-            with mujoco.viewer.launch_passive(self.model, self.data) as viewer:
-                viewer.cam.distance = max(8.0, self.push_distance / 2)
-                viewer.cam.azimuth = 135
-                viewer.cam.elevation = -25
+        while self.env.time < max_time:
+            controls = self.controller.compute_control(
+                obs['payload'],
+                obs['robots'],
+                self.env.goal_pos,
+                self.env.dt,
+                obs['forces'],
+            )
+            obs = self.env.step(controls)
 
-                step_count = 0
-                while viewer.is_running() and self.data.time < max_time:
-                    # Get states
-                    payload_state = self.get_payload_state()
-                    robot_states = self.get_robot_states()
+            payload_trajectory.append(obs['payload'][:3].copy())
+            solve_times.append(self.controller.get_solve_time())
+            contact_counts.append(self.env.data.ncon)
 
-                    # Compute control
-                    controls = self.controller.compute_control(
-                        payload_state, robot_states, self.goal_state, self.model.opt.timestep
-                    )
-                    self.set_robot_controls(controls)
+            distance_to_goal = np.linalg.norm(obs['payload'][:2] - self.env.goal_pos[:2])
+            if not converged and distance_to_goal < success_threshold:
+                converged = True
+                convergence_time = self.env.time
 
-                    # Step simulation
-                    mujoco.mj_step(self.model, self.data)
-                    step_count += 1
-
-                    # Log data
-                    payload_trajectory.append(payload_state[:3].copy())
-                    solve_times.append(self.controller.get_solve_time())
-                    contact_counts.append(self.data.ncon)
-
-                    # Check convergence
-                    distance_to_goal = np.linalg.norm(payload_state[:2] - self.goal_state[:2])
-                    if not converged and distance_to_goal < success_threshold:
-                        converged = True
-                        convergence_time = self.data.time
-
-                    # Sync viewer
-                    if step_count % 10 == 0:
-                        viewer.sync()
-
-                    # Progress reporting
-                    if step_count % 200 == 0:
-                        print(f"  t={self.data.time:.1f}s | d={distance_to_goal:.2f}m | "
-                              f"solve_time={solve_times[-1]*1000:.1f}ms")
-
-        else:
-            # Run headless (faster)
-            while self.data.time < max_time:
-                # Get states
-                payload_state = self.get_payload_state()
-                robot_states = self.get_robot_states()
-
-                # Compute control
-                controls = self.controller.compute_control(
-                    payload_state, robot_states, self.goal_state, self.model.opt.timestep
-                )
-                self.set_robot_controls(controls)
-
-                # Step simulation
-                mujoco.mj_step(self.model, self.data)
-
-                # Log data
-                payload_trajectory.append(payload_state[:3].copy())
-                solve_times.append(self.controller.get_solve_time())
-                contact_counts.append(self.data.ncon)
-
-                # Check convergence
-                distance_to_goal = np.linalg.norm(payload_state[:2] - self.goal_state[:2])
-                if not converged and distance_to_goal < success_threshold:
-                    converged = True
-                    convergence_time = self.data.time
-
-                # Early termination if converged
-                if converged and self.data.time > convergence_time + 5.0:
-                    break
+            if converged and self.env.time > convergence_time + 5.0:
+                break
 
         wall_time = time.time() - start_wall_time
+        final_distance = np.linalg.norm(obs['payload'][:2] - self.env.goal_pos[:2])
 
-        # Final distance
-        final_payload_state = self.get_payload_state()
-        final_distance = np.linalg.norm(final_payload_state[:2] - self.goal_state[:2])
-
-        # Compile results
         results = {
             'n_agents': self.num_robots,
             'converged': converged,
             'convergence_time': convergence_time if converged else None,
             'final_distance_to_goal': float(final_distance),
-            'simulation_time': float(self.data.time),
+            'simulation_time': float(self.env.time),
             'wall_time': float(wall_time),
             'solve_times': [float(t) for t in solve_times],
             'mean_solve_time': float(np.mean(solve_times)),
@@ -293,7 +151,7 @@ def run_batch_experiments(
         push_distance: Push distance for all experiments
         controller_config: MPC controller configuration
         max_time: Maximum simulation time per experiment
-        use_viewer: Show visualization
+        use_viewer: Show visualization (currently unused)
         output_dir: Directory to save logs
 
     Returns:
@@ -325,7 +183,6 @@ def run_batch_experiments(
         run_result = runner.run_experiment(max_time=max_time)
         results['runs'].append(run_result)
 
-    # Save results
     if output_dir:
         output_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -335,14 +192,13 @@ def run_batch_experiments(
         with open(filepath, 'w') as f:
             json.dump(results, f, indent=2)
 
-        print(f"\n{'='*60}")
-        print(f"Results saved: {filepath}")
-        print(f"{'='*60}")
-
-        # Also save as 'latest.json' for easy access
         latest_path = output_dir / "latest.json"
         with open(latest_path, 'w') as f:
             json.dump(results, f, indent=2)
+
+        print(f"\n{'='*60}")
+        print(f"Results saved: {filepath}")
+        print(f"{'='*60}")
 
     return results
 
@@ -372,23 +228,19 @@ def main():
 
     args = parser.parse_args()
 
-    # Parse n values
     n_values = [int(x.strip()) for x in args.n_values.split(',')]
 
-    # Controller config
     controller_config = {
         'horizon': args.horizon,
         'dt': args.dt,
         'solver': args.solver,
     }
 
-    # Output directory
     if args.output:
         output_dir = Path(args.output)
     else:
         output_dir = Path(__file__).parent.parent / "analysis" / "logs"
 
-    # Run experiments
     run_batch_experiments(
         n_values=n_values,
         push_distance=args.distance,

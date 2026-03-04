@@ -188,19 +188,21 @@ class CentralizedMPC(BaseController):
         payload_state: np.ndarray,
         robot_states: np.ndarray,
         goal_state: np.ndarray,
-        dt: float
+        dt: float,
+        forces: np.ndarray = None,
     ) -> np.ndarray:
         """
         Solve MPC problem and return control commands.
 
         Args:
-            payload_state: [x, y, theta, vx, vy, omega]
+            payload_state: (6,) [x, y, theta, vx, vy, omega]
             robot_states: (n, 4) array of [x, y, vx, vy]
-            goal_state: [x_goal, y_goal, theta_goal]
+            goal_state: (3,) [x_goal, y_goal, theta_goal]
             dt: Time step (not used, we use self.dt from config)
+            forces: (n, 3) external forces (unused by MPC, accepted for interface compat)
 
         Returns:
-            controls: (n, 2) array of [left_vel, right_vel] for each robot
+            controls: (n, 2) array of [vx, vy] in m/s (Cartesian, world frame)
         """
         n = self.num_robots
 
@@ -236,39 +238,17 @@ class CentralizedMPC(BaseController):
             self._set_solve_time(solve_time)
             self._solve_times.append(solve_time)
 
-            # Extract solution
+            # Extract solution — first step's [vx, vy] for each robot
             u_opt = sol['x'].full().flatten()
             self._last_solution = u_opt
-
-            # Take first control input
             u_0 = u_opt[:2*n]
 
-            # Convert from [vx, vy] to [left_wheel_vel, right_wheel_vel] for differential drive
-            controls = np.zeros((n, 2))
-            for i in range(n):
-                vx = u_0[2*i]
-                vy = u_0[2*i + 1]
-
-                # For straight pushing, we primarily use vx (forward velocity)
-                # and vy can be ignored or converted to turning rate
-                # Simple approximation: v = vx, omega = vy / (wheel_base/2)
-                v_linear = vx
-                omega = 0.0  # Ignore lateral velocity for now (straight push)
-
-                # Differential drive kinematics
-                v_left = v_linear - omega * self.wheel_base / 2
-                v_right = v_linear + omega * self.wheel_base / 2
-
-                # Convert to wheel angular velocity (rad/s)
-                wheel_radius = 0.033  # TurtleBot3 wheel radius
-                controls[i, 0] = v_left / wheel_radius
-                controls[i, 1] = v_right / wheel_radius
-
+            # Return as (n, 2) Cartesian [vx, vy] — environment handles actuation
+            controls = u_0.reshape(n, 2)
             return controls
 
         except Exception as e:
             print(f"MPC solve failed: {e}")
-            # Return zero controls on failure
             self._set_solve_time(time.time() - start_time)
             return np.zeros((n, 2))
 
