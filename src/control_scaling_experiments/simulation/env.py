@@ -146,17 +146,57 @@ class SwarmTransportEnv:
 
     def _read_forces(self) -> np.ndarray:
         """
-        Return per-robot external forces (n, 3) [fx, fy, torque_z].
+        Return per-robot external forces (n, 3) [fx, fy, torque_z] in world frame.
 
-        data.cfrc_ext has shape (nbody, 6) = [torque(3), force(3)] in world frame.
-        We extract force[0:2] (fx, fy) and torque[2] (torque_z).
+        Iterates over all active contacts. For each contact involving a robot body,
+        mj_contactForce gives [f_normal, f_tang1, f_tang2, ...] in the contact frame.
+        The contact frame matrix (stored row-major as contact axes in world frame)
+        rotates the contact-frame force into world frame.
+
+        Forces from ground contacts are excluded; robot-payload and robot-robot
+        contact forces are included.
         """
+        # Index 0 = world body; we want to exclude world-body contacts
+        WORLD_BODY = 0
+
+        # Build a set of robot body IDs for fast lookup
+        robot_id_set = set(self._robot_body_ids)
+
         forces = np.zeros((self.n_robots, 3))
-        for i, body_id in enumerate(self._robot_body_ids):
-            cfrc = self.data.cfrc_ext[body_id]  # [tx, ty, tz, fx, fy, fz]
-            forces[i, 0] = cfrc[3]   # fx
-            forces[i, 1] = cfrc[4]   # fy
-            forces[i, 2] = cfrc[2]   # torque_z
+        contact_buf = np.zeros(6)  # [f1,f2,f3,t1,t2,t3] in contact frame
+
+        for ci in range(self.data.ncon):
+            contact = self.data.contact[ci]
+            b1 = self.model.geom_bodyid[contact.geom1]
+            b2 = self.model.geom_bodyid[contact.geom2]
+
+            # Skip pure ground contacts (neither body is a robot)
+            if b1 == WORLD_BODY and b2 not in robot_id_set:
+                continue
+            if b2 == WORLD_BODY and b1 not in robot_id_set:
+                continue
+
+            mujoco.mj_contactForce(self.model, self.data, ci, contact_buf)
+
+            # Rotate force from contact frame to world frame
+            # contact.frame shape (9,): row i = i-th contact axis in world frame
+            frame = contact.frame.reshape(3, 3)
+            force_world = frame.T @ contact_buf[:3]  # [fx, fy, fz] world
+
+            # Accumulate: force on body of geom1
+            if b1 in robot_id_set and b2 != WORLD_BODY:
+                ri = self._robot_body_ids.index(b1)
+                forces[ri, 0] += force_world[0]
+                forces[ri, 1] += force_world[1]
+                forces[ri, 2] += contact_buf[5]  # torque_z stays in contact frame
+
+            # Newton's 3rd law: force on body of geom2 is the negative
+            if b2 in robot_id_set and b1 != WORLD_BODY:
+                ri = self._robot_body_ids.index(b2)
+                forces[ri, 0] -= force_world[0]
+                forces[ri, 1] -= force_world[1]
+                forces[ri, 2] -= contact_buf[5]
+
         return forces
 
     def _obs(self) -> dict:

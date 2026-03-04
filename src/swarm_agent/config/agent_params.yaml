@@ -1,0 +1,9 @@
+swarm_agent:
+  ros__parameters:
+    agent_id: 0
+    neighbor_ids: ""       # comma-separated, e.g. "1,2"
+    control_frequency: 50.0
+    namespace: "/swarm"
+    goal_x: 5.0
+    goal_y: 0.0
+    goal_theta: 0.0

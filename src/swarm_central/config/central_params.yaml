@@ -1,0 +1,8 @@
+swarm_central:
+  ros__parameters:
+    n_robots: 2
+    control_frequency: 50.0
+    namespace: "/swarm"
+    goal_x: 5.0
+    goal_y: 0.0
+    goal_theta: 0.0

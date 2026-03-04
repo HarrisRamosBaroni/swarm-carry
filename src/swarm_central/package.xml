@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>swarm_central</name>
+  <version>0.1.0</version>
+  <description>
+    Centralized ROS2 controller node for swarm payload transport.
+    Runs on the operator laptop. Subscribes to all robot states,
+    runs the controller, and publishes cmd_vel to all robots.
+    Use this for CentralizedMPC, CentralizedFactorGraph, etc.
+  </description>
+
+  <maintainer email="todo@todo.com">swarm-carry team</maintainer>
+  <license>MIT</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

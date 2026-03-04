@@ -274,3 +274,169 @@ class ROS2Backend(CommunicationBackend):
             self.shutdown()
         except Exception:
             pass
+
+
+class SingleAgentROS2Backend(CommunicationBackend):
+    """
+    One-agent-per-process ROS2 communication backend.
+
+    Intended for real-robot deployment where each TurtleBot3 runs its own
+    ROS2 process. Creates a single rclpy Node for ``my_id``.
+
+    Publishes outgoing GBP messages to:
+        /swarm/agent_{my_id}/outbox   (Float64MultiArray)
+
+    Subscribes to neighbors' outboxes:
+        /swarm/agent_{j}/outbox   for j in neighbors
+
+    The serialization wire format is identical to ROS2Backend, so agents
+    running SingleAgentROS2Backend and ROS2Backend (multi-agent, same process)
+    can interoperate on the same ROS2 network.
+
+    Parameters
+    ----------
+    my_id : int
+        This agent's ID.
+    neighbors : list of int
+        IDs of agents this agent communicates with.
+    barrier_timeout : float
+        Seconds to wait in barrier() before raising TimeoutError. Default 5.0.
+    namespace : str
+        ROS2 topic namespace prefix. Default '/swarm'.
+    """
+
+    def __init__(
+        self,
+        my_id: int,
+        neighbors: List[int],
+        barrier_timeout: float = 5.0,
+        namespace: str = '/swarm',
+    ):
+        _require_ros2()
+        # Build a minimal topology: only my_id knows its neighbors
+        topology = {my_id: list(neighbors)}
+        super().__init__(num_agents=1, topology=topology)
+
+        self.my_id = my_id
+        self._neighbors = list(neighbors)
+        self._barrier_timeout = barrier_timeout
+        self._namespace = namespace.rstrip('/')
+        self._current_epoch = 0
+
+        # Inbox and received-this-round counter
+        self._inbox: List[Tuple[int, GaussianMessage]] = []
+        self._received_count: int = 0
+        self._expected: int = len(neighbors)  # one message per neighbor per round
+
+        if not rclpy.ok():
+            rclpy.init()
+
+        self._node = rclpy.create_node(f'swarm_agent_{my_id}')
+        self._publisher = self._node.create_publisher(
+            Float64MultiArray,
+            f'{self._namespace}/agent_{my_id}/outbox',
+            qos_profile=10,
+        )
+
+        for j in neighbors:
+            self._node.create_subscription(
+                Float64MultiArray,
+                f'{self._namespace}/agent_{j}/outbox',
+                self._callback,
+                qos_profile=10,
+            )
+
+        self._executor = SingleThreadedExecutor()
+        self._executor.add_node(self._node)
+
+    # ------------------------------------------------------------------
+    # Serialization (reuse ROS2Backend static methods via module-level fns)
+    # ------------------------------------------------------------------
+
+    def _serialize(self, to_id: int, message: GaussianMessage) -> 'Float64MultiArray':
+        dim = len(message.eta)
+        ros_msg = Float64MultiArray()
+        ros_msg.data = [
+            float(self.my_id),
+            float(to_id),
+            float(message.epoch),
+            float(dim),
+            *message.eta.tolist(),
+            *message.lam.flatten().tolist(),
+        ]
+        return ros_msg
+
+    def _callback(self, ros_msg: 'Float64MultiArray') -> None:
+        from_id, to_id, gmsg = ROS2Backend._deserialize(ros_msg.data)
+        if to_id != self.my_id:
+            return
+        self._inbox.append((from_id, gmsg))
+        self._received_count += 1
+
+    # ------------------------------------------------------------------
+    # CommunicationBackend interface
+    # ------------------------------------------------------------------
+
+    def send(self, from_id: int, to_id: int, message: Any) -> None:
+        if from_id != self.my_id:
+            raise ValueError(f"SingleAgentROS2Backend: from_id must be {self.my_id}")
+        if to_id not in self._neighbors:
+            raise ValueError(f"Agent {self.my_id} cannot send to non-neighbor {to_id}")
+
+        stamped = GaussianMessage(
+            eta=message.eta.copy(),
+            lam=message.lam.copy(),
+            epoch=self._current_epoch,
+        )
+        self._publisher.publish(self._serialize(to_id, stamped))
+        self._stats['messages_sent'] += 1
+
+    def receive(self, agent_id: int) -> List[Tuple[int, GaussianMessage]]:
+        messages = list(self._inbox)
+        self._inbox.clear()
+        self._received_count = 0
+        return messages
+
+    def broadcast(self, from_id: int, message: Any) -> None:
+        for neighbor in self._neighbors:
+            self.send(from_id, neighbor, message)
+
+    def barrier(self) -> None:
+        """
+        Block until all expected messages for this round have arrived.
+
+        Spins the executor to deliver pending ROS2 callbacks. Raises
+        TimeoutError if barrier_timeout elapses.
+        """
+        deadline = time.monotonic() + self._barrier_timeout
+        while self._received_count < self._expected:
+            if time.monotonic() > deadline:
+                raise TimeoutError(
+                    f"SingleAgentROS2Backend barrier timeout after "
+                    f"{self._barrier_timeout}s. "
+                    f"Received {self._received_count}/{self._expected} messages."
+                )
+            self._executor.spin_once(timeout_sec=0.005)
+
+        self._current_epoch += 1
+        self._stats['barrier_calls'] += 1
+
+    @property
+    def is_synchronous(self) -> bool:
+        return True
+
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
+
+    def shutdown(self) -> None:
+        """Destroy the node and shut down rclpy."""
+        self._node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
+
+    def __del__(self) -> None:
+        try:
+            self.shutdown()
+        except Exception:
+            pass
