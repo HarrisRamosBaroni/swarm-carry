@@ -1,8 +1,11 @@
 # Swarm Carry
 
-Research platform for multi-robot cooperative payload transport. Multiple
-TurtleBot3 Waffle Pi robots push a payload to a goal position. The stack
+Research platform for multi-robot cooperative payload transport. The stack
 runs as pure Python (MuJoCo only) or over ROS2 Jazzy for sim-to-real transfer.
+
+See [docs/scenario.md](docs/scenario.md) for the target research scenario and
+current assumptions. The existing simulation infrastructure is a stepping stone —
+read that doc before building on top of it.
 
 ---
 

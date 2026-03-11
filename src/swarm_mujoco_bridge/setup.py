@@ -26,6 +26,7 @@ setup(
     entry_points={
         'console_scripts': [
             'bridge_node = swarm_mujoco_bridge.bridge_node:main',
+            'holonomic_bridge_node = swarm_mujoco_bridge.holonomic_bridge_node:main',
         ],
     },
 )
