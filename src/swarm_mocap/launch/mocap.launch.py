@@ -10,9 +10,10 @@ def generate_launch_description():
     pkg = get_package_share_directory('swarm_mocap')
 
     return LaunchDescription([
-        DeclareLaunchArgument('server_ip',           default_value='192.168.1.71'),
-        DeclareLaunchArgument('frame_id',            default_value='mocap'),
-        DeclareLaunchArgument('published_rigid_ids', default_value='[]'),
+        DeclareLaunchArgument('server_ip', default_value='192.168.0.244'),
+        DeclareLaunchArgument('frame_id',  default_value='mocap'),
+        # published_rigid_ids is an integer array — set it in config/mocap_params.yaml,
+        # not as a launch arg (ROS2 launch can't reliably parse integer arrays from CLI).
 
         Node(
             package='swarm_mocap',
@@ -22,9 +23,8 @@ def generate_launch_description():
             parameters=[
                 os.path.join(pkg, 'config', 'mocap_params.yaml'),
                 {
-                    'server_ip':           LaunchConfiguration('server_ip'),
-                    'frame_id':            LaunchConfiguration('frame_id'),
-                    'published_rigid_ids': LaunchConfiguration('published_rigid_ids'),
+                    'server_ip': LaunchConfiguration('server_ip'),
+                    'frame_id':  LaunchConfiguration('frame_id'),
                 },
             ],
         ),

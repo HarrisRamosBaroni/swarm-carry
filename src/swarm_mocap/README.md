@@ -42,9 +42,13 @@ source install/setup.bash
 ros2 launch swarm_mocap mocap.launch.py server_ip:=192.168.0.244
 ```
 
-Before real experiments, set `published_rigid_ids` in `config/mocap_params.yaml`
-to match the rigid body IDs assigned in the PhaseSpace web UI
-(`http://192.168.0.244`) for each robot and the payload.
+**Configuring rigid body IDs:**
+In the PhaseSpace web UI (`http://192.168.0.244`), define one rigid body (tracker)
+per robot and one for the payload — the system assigns each an integer ID in the
+order they are created. Set `published_rigid_ids` in `config/mocap_params.yaml` to
+those IDs and document which ID corresponds to which robot. With `published_rigid_ids: []`
+(the default) everything still appears on `/mocap/rigids` as a `PoseArray`; the
+individual `/mocap/rigid_{id}` topics are just a convenience for direct subscription.
 
 ---
 
