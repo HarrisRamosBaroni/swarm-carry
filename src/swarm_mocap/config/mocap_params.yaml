@@ -1,6 +1,7 @@
 swarm_mocap:
   ros__parameters:
-    server_ip: "192.168.1.71"       # PhaseSpace OWL server IP (from setup doc)
+    # server_ip: "192.168.1.71"       # PhaseSpace OWL server IP (from setup doc)
+    server_ip: "192.168.0.244"       # PhaseSpace OWL server IP (from setup doc)
     frame_id: "mocap"               # TF frame for all published poses
     # List rigid body IDs that should also get individual /mocap/rigid_{id} topics.
     # Set these to match however the PhaseSpace software has labelled the rigid bodies
