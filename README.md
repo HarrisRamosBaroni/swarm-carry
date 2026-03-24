@@ -15,7 +15,14 @@ read that doc before building on top of it.
 swarmlib/          Core Python library — no ROS2 required
   controllers/     BaseController interface + CentralizedMPC
   communication/   SimulatedBackend, AsyncSimulatedBackend, ROS2Backend
-  simulation/      SwarmTransportEnv (MuJoCo step/reset), scene generator
+  simulation/      MuJoCo environments and scene generators
+    env.py             SwarmTransportEnv — diff-drive TurtleBot3s all on one face,
+                       straight-line push; used only for the MPC scaling experiment
+    holonomic_env.py   HolonomicTransportEnv — abstract kinematic placeholder
+                       (box robots, no wheel physics); not used for the actual scenario
+    mecanum_env.py     MecanumTransportEnv — primary env for the actual research
+                       scenario: mecanum-wheeled robots with L-carriages, configurable
+                       formation around the payload centroid, base/wall force readout
 
 src/               ROS2 workspace (colcon build runs here)
   swarm_mujoco_bridge/   MuJoCo physics exposed as ROS2 pub/sub
@@ -55,6 +62,13 @@ cd src && colcon build --symlink-install && source install/setup.bash
 
 ## Run a pure-Python simulation
 
+`SwarmTransportEnv` is the preliminary side-push environment used only in the
+MPC scaling experiment — all robots are on one face of the payload, so it is
+incompatible with any centroid-based formation controller (mr.cap, factor graph,
+GBP). `MecanumTransportEnv` is the environment for the actual research scenario:
+mecanum-wheeled robots with L-shaped forklift carriages arranged around the payload
+centroid, with `base_forces` (vertical load) and `wall_forces` (shear) readout.
+
 ```python
 from swarmlib.simulation import SwarmTransportEnv
 import numpy as np
@@ -64,6 +78,24 @@ obs = env.reset()
 
 for _ in range(500):
     # obs keys: 'payload' (6,), 'robots' (n,4), 'forces' (n,3)
+    controls = np.zeros((4, 2))   # [vx, vy] per robot, m/s world frame
+    obs = env.step(controls)
+
+env.close()
+```
+
+For the actual scenario, use `MecanumTransportEnv`:
+
+```python
+from swarmlib.simulation import MecanumTransportEnv
+import numpy as np
+
+env = MecanumTransportEnv(n_robots=4, goal=(5.0, 0.0, 0.0))
+obs = env.reset()
+
+for _ in range(500):
+    # obs keys: 'payload' (6,), 'robots' (n,4),
+    #           'base_forces' (n,3), 'wall_forces' (n,3)
     controls = np.zeros((4, 2))   # [vx, vy] per robot, m/s world frame
     obs = env.step(controls)
 
