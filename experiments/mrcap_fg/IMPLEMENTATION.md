@@ -3,6 +3,22 @@
 This document explains how the factor graph described in `PROBLEM_STATEMENT.md` is
 concretely realised in `swarmlib/controllers/mrcap_controller.py` using GTSAM.
 
+## Control actuation chain
+
+The controller outputs an `(n, 2)` array of `[vx, vy]` per robot in the world frame.
+`MecanumTransportEnv._apply_controls()` realises these as physical torques via:
+
+1. **World → body frame** rotation using each robot's current yaw
+2. **Mecanum IK** mapping body-frame `[vx_b, vy_b]` to target angular velocities for the 4 wheels
+3. **PD torque controller** converting wheel velocity error to motor torque:
+   `torque = wheel_kv * (target_vel - current_vel)`, `wheel_kv = 200 Nm/(rad/s)` by default
+4. Torques written to `data.ctrl` — MuJoCo integrates forward
+
+Commands are therefore **not perfectly tracked**: there is PD lag, and payload reaction
+forces acting through the carriage can resist individual robots, causing their actual
+velocity to differ from the command. The controller receives no feedback about this
+discrepancy.
+
 ## GTSAM in one sentence
 
 GTSAM is a C++ library (with Python bindings) that lets you construct a factor graph as
@@ -83,3 +99,15 @@ are constructed anew every step at measurement frequency (20 Hz, `dt_control = 0
 The problem is linear (linear motion model, linear factors, Gaussian noise), so LM
 converges in a single iteration regardless of the starting point. Warm-starting would save
 one matrix assembly but adds code complexity for no practical benefit here.
+
+## Why is the graph object not reused across steps?
+
+The graph topology (which variables each factor connects to) is identical every step, so
+in principle the same `NonlinearFactorGraph` could be reused. However, the factor
+*measurements* change each step — the anchor at `C_0` updates to the new measured centroid
+and `ref` is recomputed. Because `CustomFactor` bakes measurements into the error closure
+via `functools.partial`, there is no API to update just the measurement in place; the
+factor object itself would need replacing. Since rebuilding the full graph is cheap (the
+problem is linear, LM runs one iteration), the simpler approach of constructing a fresh
+graph each step was taken. The previous graph object goes out of scope at the end of
+`_solve_fg` and is reclaimed by Python's garbage collector.

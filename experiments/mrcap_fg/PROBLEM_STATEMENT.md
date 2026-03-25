@@ -19,6 +19,10 @@ $$
 so there are no per-robot decision variables — the $2n$ robot velocities are a deterministic
 function of the 3-dimensional centroid control $\mathbf{u}_k$. Formation geometry is therefore
 maintained *by construction* at every step, not by an explicit formation-keeping factor in the graph.
+Note that this is an open-loop assumption: commands are tracked via a PD wheel torque
+controller (not perfect), and payload reaction forces can cause per-robot velocity errors
+that the controller never observes. In practice the rigid-body assumption holds well
+enough under the carriage coupling, but deviations are possible under large disturbances.
 
 ## Motion Model
 
