@@ -27,10 +27,18 @@ public:
     // IDs of rigid bodies to publish individually on /mocap/rigid_{id}
     declare_parameter("published_rigid_ids", std::vector<int64_t>{});
 
-    server_ip_   = get_parameter("server_ip").as_string();
-    frame_id_    = get_parameter("frame_id").as_string();
-    auto ids     = get_parameter("published_rigid_ids").as_integer_array();
-    for (auto id : ids) published_rigid_ids_.insert(static_cast<uint32_t>(id));
+    server_ip_ = get_parameter("server_ip").as_string();
+    frame_id_  = get_parameter("frame_id").as_string();
+    try {
+      auto ids = get_parameter("published_rigid_ids").as_integer_array();
+      for (auto id : ids) published_rigid_ids_.insert(static_cast<uint32_t>(id));
+    } catch (const rclcpp::exceptions::ParameterUninitializedException &) {
+      // not set — only /mocap/rigids and /mocap/markers will be published
+    } catch (const rclcpp::exceptions::InvalidParameterValueException &) {
+      RCLCPP_WARN(get_logger(),
+        "published_rigid_ids could not be parsed — "
+        "set it as a non-empty integer list e.g. [0, 1, 2] in mocap_params.yaml");
+    }
 
     // Publishers
     rigids_pub_  = create_publisher<geometry_msgs::msg::PoseArray>("/mocap/rigids",  10);
