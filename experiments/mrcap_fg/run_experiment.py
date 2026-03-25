@@ -8,9 +8,10 @@ Results are saved to results.json alongside a printed summary.
 
 Usage
 -----
-  python run_experiment.py                     # default: n=2,3,4  dist=5m
+  python run_experiment.py                        # default: n=2,3,4  dist=5m
   python run_experiment.py --n-values 2,4 --distance 3.0
   python run_experiment.py --n-values 3 --max-time 30
+  python run_experiment.py --n-values 3 --vis      # watch one run in MuJoCo viewer
 """
 
 import argparse
@@ -54,6 +55,7 @@ def run_single(
     success_threshold: float,
     horizon: int,
     v_max: float,
+    visualise: bool = False,
 ) -> dict:
     goal = (distance, 0.0, 0.0)
     formation = surround_formation(n_robots)
@@ -79,6 +81,12 @@ def run_single(
     obs = env.reset()
     controller.reset()
 
+    # Optional live viewer
+    viewer = None
+    if visualise:
+        import mujoco.viewer as mjv
+        viewer = mjv.launch_passive(env.model, env.data)
+
     goal_arr = np.array(goal)
     payload_trajectory = []
     solve_times = []
@@ -87,6 +95,8 @@ def run_single(
     success = False
 
     while env.time < max_time:
+        if viewer is not None and not viewer.is_running():
+            break
         payload = obs["payload"]
         robots  = obs["robots"]
         forces  = obs.get("wall_forces")
@@ -104,12 +114,17 @@ def run_single(
 
         obs = env.step(controls)
 
+        if viewer is not None:
+            viewer.sync()
+
         dist_to_goal = float(np.linalg.norm(payload[:2] - goal_arr[:2]))
         if dist_to_goal < success_threshold:
             success = True
             break
 
     wall_elapsed = time.perf_counter() - wall_start
+    if viewer is not None:
+        viewer.close()
     traj = np.array(payload_trajectory)
     final_error = float(np.linalg.norm(traj[-1, :2] - goal_arr[:2]))
 
@@ -128,16 +143,20 @@ def run_single(
     env.close()
 
     return {
-        "n_robots":          n_robots,
-        "success":           success,
-        "sim_time":          float(env.time),
-        "wall_time_s":       wall_elapsed,
-        "final_error_m":     final_error,
-        "mean_deviation_m":  deviation,
+        "n_robots":           n_robots,
+        "success":            success,
+        "sim_time":           float(env.time),
+        "wall_time_s":        wall_elapsed,
+        "final_error_m":      final_error,
+        "mean_deviation_m":   deviation,
         "solve_time_mean_ms": float(np.mean(solve_times) * 1e3),
         "solve_time_std_ms":  float(np.std(solve_times)  * 1e3),
         "solve_time_max_ms":  float(np.max(solve_times)  * 1e3),
-        "n_steps":           len(solve_times),
+        "n_steps":            len(solve_times),
+        # Full time-series for plotting
+        "trajectory":         traj.tolist(),
+        "solve_times_ms":     (np.array(solve_times) * 1e3).tolist(),
+        "goal":               goal_arr.tolist(),
     }
 
 
@@ -159,6 +178,8 @@ def main():
                         help="Per-robot speed limit m/s (default: 1.0)")
     parser.add_argument("--threshold", type=float, default=0.3,
                         help="Success distance threshold m (default: 0.3)")
+    parser.add_argument("--vis", action="store_true",
+                        help="Open MuJoCo viewer for the first run only")
     args = parser.parse_args()
 
     n_values = [int(x.strip()) for x in args.n_values.split(",")]
@@ -173,7 +194,7 @@ def main():
 
     all_results = []
 
-    for n in n_values:
+    for idx, n in enumerate(n_values):
         print(f"Running n={n} ...", flush=True)
         result = run_single(
             n_robots=n,
@@ -182,6 +203,7 @@ def main():
             success_threshold=args.threshold,
             horizon=args.horizon,
             v_max=args.v_max,
+            visualise=args.vis and idx == 0,
         )
         all_results.append(result)
 

@@ -22,3 +22,5 @@ src/examples/
 **/build
 **/install
 **/log
+
+experiments/mrcap_fg/results.json
