@@ -17,7 +17,8 @@ $$
 \mathbf{v}_i = \begin{bmatrix} v_x - \omega \, r_{iy} \\ v_y + \omega \, r_{ix} \end{bmatrix}
 $$
 so there are no per-robot decision variables — the $2n$ robot velocities are a deterministic
-function of the 3-dimensional centroid control $\mathbf{u}_k$.
+function of the 3-dimensional centroid control $\mathbf{u}_k$. Formation geometry is therefore
+maintained *by construction* at every step, not by an explicit formation-keeping factor in the graph.
 
 ## Motion Model
 
@@ -67,6 +68,11 @@ set to reflect that estimator's uncertainty rather than the near-zero value used
 This is solved via Levenberg–Marquardt (GTSAM). Because all factors are linear in the
 variables and the motion model is linear, the graph is a linear least-squares problem and
 LM converges in a single iteration.
+
+Only $\mathbf{u}_0^*$ is extracted from the solution and applied; the remainder of the
+optimal trajectory $\{\mathbf{c}_1^*, \ldots, \mathbf{c}_N^*, \mathbf{u}_1^*, \ldots,
+\mathbf{u}_{N-1}^*\}$ is discarded. The graph is rebuilt from the new measured state at
+the next control step — standard receding-horizon MPC.
 
 ## Scalability
 
