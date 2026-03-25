@@ -38,7 +38,7 @@ The graph contains four types of factors:
 
 | Factor | Variables | Role |
 |--------|-----------|------|
-| Current-state anchor | $\mathbf{c}_k$ | Hard-pins the graph to the measured centroid pose ($\sigma_\text{anchor} = 0.01$) |
+| Current-state anchor | $\mathbf{c}_k$ | Hard-pins the graph to the measured centroid pose ($\sigma_\text{anchor} = 0.01$) — see note below |
 | Reference prior | $\mathbf{c}_j$, $j > k$ | Pulls the trajectory toward a linear-interpolated reference from $\mathbf{c}_k$ to $\mathbf{c}_\text{goal}$ ($\sigma_x = 0.5$) |
 | Control regulariser | $\mathbf{u}_j$ | Penalises control effort away from zero ($\sigma_u = 0.3$) |
 | Motion model | $(\mathbf{c}_j, \mathbf{u}_j, \mathbf{c}_{j+1})$ | Near-equality enforcing the Euler step ($\sigma_\text{mm} = 10^{-4}$) |
@@ -55,6 +55,14 @@ $$
 + \frac{\|\mathbf{c}_k - \mathbf{c}_k^\text{meas}\|^2}{\sigma_\text{anchor}^2}
 + \frac{\|\mathbf{c}_{k+N} - \mathbf{c}_\text{goal}\|^2}{\sigma_\text{anchor}^2}
 $$
+
+**Note on $\mathbf{c}_k^\text{meas}$.**
+In simulation, the measured centroid pose is obtained directly from the MuJoCo physics state:
+position from `data.xpos`, orientation (yaw) from `data.xquat` via quaternion-to-yaw conversion,
+and velocities from `data.cvel`. This is noiseless ground-truth. In a real deployment
+$\mathbf{c}_k^\text{meas}$ would be the output of a localisation system (e.g. motion capture,
+UWB ranging, or an EKF fusing wheel odometry and IMU), and $\sigma_\text{anchor}$ should be
+set to reflect that estimator's uncertainty rather than the near-zero value used here.
 
 This is solved via Levenberg–Marquardt (GTSAM). Because all factors are linear in the
 variables and the motion model is linear, the graph is a linear least-squares problem and

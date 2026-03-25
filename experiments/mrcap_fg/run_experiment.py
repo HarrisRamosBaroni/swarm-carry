@@ -56,6 +56,7 @@ def run_single(
     horizon: int,
     v_max: float,
     visualise: bool = False,
+    sim_speed: float = 1.0,
 ) -> dict:
     goal = (distance, 0.0, 0.0)
     formation = surround_formation(n_robots)
@@ -86,6 +87,7 @@ def run_single(
     if visualise:
         import mujoco.viewer as mjv
         viewer = mjv.launch_passive(env.model, env.data)
+        input("  Viewer open — adjust camera, then press Enter to start...")
 
     goal_arr = np.array(goal)
     payload_trajectory = []
@@ -116,6 +118,7 @@ def run_single(
 
         if viewer is not None:
             viewer.sync()
+            time.sleep(0.05 / sim_speed)
 
         dist_to_goal = float(np.linalg.norm(payload[:2] - goal_arr[:2]))
         if dist_to_goal < success_threshold:
@@ -180,6 +183,8 @@ def main():
                         help="Success distance threshold m (default: 0.3)")
     parser.add_argument("--vis", action="store_true",
                         help="Open MuJoCo viewer for the first run only")
+    parser.add_argument("--sim-speed", type=float, default=0.5,
+                        help="Playback speed multiplier when --vis is set (default: 0.5 = half real-time)")
     args = parser.parse_args()
 
     n_values = [int(x.strip()) for x in args.n_values.split(",")]
@@ -204,6 +209,7 @@ def main():
             horizon=args.horizon,
             v_max=args.v_max,
             visualise=args.vis and idx == 0,
+            sim_speed=args.sim_speed,
         )
         all_results.append(result)
 
