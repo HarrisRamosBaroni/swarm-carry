@@ -37,14 +37,15 @@ DT_CONTROL = 0.05
 
 
 def make_env(formation, n_robots=N_ROBOTS):
-    """Create env with payload 100 m away so it never interacts."""
+    """Create env with a tiny payload (1 cm box) that can't collide with robots."""
     return MecanumTransportEnv(
         n_robots=n_robots,
         formation=formation,
         goal=(5.0, 0.0, 0.0),
-        payload_pos=(100.0, 0.0),   # payload far away — no contact
+        payload_pos=(0.0, 0.0),
+        payload_size=(0.01, 0.01, 0.01),  # negligible — no contact with robots
         payload_mass=1.0,
-        with_carriage=False,        # bare robots, no fork geometry
+        with_carriage=False,
         dt_control=DT_CONTROL,
     )
 
