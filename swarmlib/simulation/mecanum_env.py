@@ -79,6 +79,11 @@ class MecanumTransportEnv:
     wheel_kv     : PD gain for wheel velocity tracking (Nm per rad/s)
     dt_control   : control period (s); physics sub-stepped to match
     scenes_dir   : directory for auto-generated scenes (default: system temp)
+    vel_feedback : enable per-robot PI velocity feedback (world frame).
+                   Compensates for strafe inefficiency and other tracking errors.
+    vel_fb_kp    : proportional gain for velocity feedback
+    vel_fb_ki    : integral gain for velocity feedback
+    vel_fb_integral_max : anti-windup clamp on integral magnitude (m/s)
     """
 
     def __init__(
@@ -95,6 +100,10 @@ class MecanumTransportEnv:
         wheel_kv: float = _WHEEL_KV,
         dt_control: float = 0.05,
         scenes_dir: Optional[str | Path] = None,
+        vel_feedback: bool = False,
+        vel_fb_kp: float = 2.0,
+        vel_fb_ki: float = 5.0,
+        vel_fb_integral_max: float = 2.0,
     ):
         self.n_robots = n_robots
         self._dt = dt_control
@@ -102,6 +111,13 @@ class MecanumTransportEnv:
         self._wheel_kv = wheel_kv
         self._with_carriage = with_carriage
         self._payload_density = payload_density
+
+        # Per-robot velocity feedback (PI controller on world-frame vel error)
+        self._vel_feedback = vel_feedback
+        self._vel_fb_kp = vel_fb_kp
+        self._vel_fb_ki = vel_fb_ki
+        self._vel_fb_int_max = vel_fb_integral_max
+        self._vel_integral = np.zeros((n_robots, 2))
 
         self._scenes_dir = (
             Path(scenes_dir) if scenes_dir is not None
@@ -276,6 +292,7 @@ class MecanumTransportEnv:
 
     def reset(self) -> dict:
         mujoco.mj_resetData(self.model, self.data)
+        self._vel_integral = np.zeros((self.n_robots, 2))
         for _ in range(self._n_substeps):
             mujoco.mj_step(self.model, self.data)
         return self._obs()
@@ -293,6 +310,22 @@ class MecanumTransportEnv:
             raise ValueError(
                 f"controls must be ({self.n_robots}, 2), got {controls.shape}"
             )
+
+        if self._vel_feedback:
+            # Read actual world-frame velocity per robot
+            actual_vel = np.zeros((self.n_robots, 2))
+            for i, bid in enumerate(self._base_ids):
+                actual_vel[i] = self.data.cvel[bid][3:5]
+
+            # PI correction on velocity error
+            vel_error = controls - actual_vel
+            self._vel_integral += vel_error * self._dt
+            np.clip(self._vel_integral, -self._vel_fb_int_max,
+                    self._vel_fb_int_max, out=self._vel_integral)
+            controls = (controls
+                        + self._vel_fb_kp * vel_error
+                        + self._vel_fb_ki * self._vel_integral)
+
         for _ in range(self._n_substeps):
             self._apply_controls(controls)
             mujoco.mj_step(self.model, self.data)

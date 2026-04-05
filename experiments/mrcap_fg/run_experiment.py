@@ -55,6 +55,7 @@ def run_single(
     success_threshold: float,
     horizon: int,
     v_max: float,
+    payload_mass: float,
     visualise: bool = False,
     sim_speed: float = 1.0,
 ) -> dict:
@@ -66,7 +67,8 @@ def run_single(
         formation=formation,
         goal=goal,
         payload_pos=(0.0, 0.0),
-        payload_mass=10.0,
+        payload_mass=payload_mass,
+        # payload_size=(0.01, 0.01, 0.01),  # negligible — no contact with robots
         with_carriage=True,
         dt_control=0.05,
     )
@@ -92,6 +94,11 @@ def run_single(
     goal_arr = np.array(goal)
     payload_trajectory = []
     solve_times = []
+    torque_log = []        # per step: (n_robots, 4) wheel torques
+    TORQUE_LIMIT = 10.0    # Nm — matches ctrlrange in actuator XML
+
+    # Flat list of wheel actuator ids in robot order: shape (n_robots, 4)
+    wheel_act_ids = env._wheel_act_ids   # list of length n_robots, each (4,) array
 
     wall_start = time.perf_counter()
     success = False
@@ -115,6 +122,11 @@ def run_single(
         solve_times.append(controller.get_solve_time())
 
         obs = env.step(controls)
+
+        # Record wheel torques from last substep (data.ctrl holds PD output)
+        step_torques = np.array([[env.data.ctrl[aid] for aid in ids]
+                                 for ids in wheel_act_ids])   # (n_robots, 4)
+        torque_log.append(step_torques)
 
         if viewer is not None:
             viewer.sync()
@@ -143,6 +155,11 @@ def run_single(
     else:
         deviation = 0.0
 
+    torques = np.array(torque_log)   # (n_steps, n_robots, 4)
+    saturated = np.abs(torques) >= TORQUE_LIMIT   # bool mask
+    sat_frac = float(saturated.mean())            # fraction of wheel-steps at limit
+    peak_torque = float(np.abs(torques).max())
+
     env.close()
 
     return {
@@ -156,10 +173,14 @@ def run_single(
         "solve_time_std_ms":  float(np.std(solve_times)  * 1e3),
         "solve_time_max_ms":  float(np.max(solve_times)  * 1e3),
         "n_steps":            len(solve_times),
+        "sat_frac":           sat_frac,           # fraction of (step, robot, wheel) at torque limit
+        "peak_torque_Nm":     peak_torque,
         # Full time-series for plotting
         "trajectory":         traj.tolist(),
         "solve_times_ms":     (np.array(solve_times) * 1e3).tolist(),
+        "payload_mass_kg":    payload_mass,
         "goal":               goal_arr.tolist(),
+        "torques_Nm":         torques.tolist(),   # (n_steps, n_robots, 4)
     }
 
 
@@ -177,8 +198,10 @@ def main():
                         help="Max simulation time per run in seconds (default: 60)")
     parser.add_argument("--horizon",   type=int,   default=15,
                         help="FG horizon N (default: 15)")
-    parser.add_argument("--v-max",     type=float, default=1.0,
-                        help="Per-robot speed limit m/s (default: 1.0)")
+    parser.add_argument("--v-max",        type=float, default=0.25,
+                        help="Per-robot speed limit m/s (default: 0.25 — keeps strafing robots below torque saturation)")
+    parser.add_argument("--payload-mass", type=float, default=2.0,
+                        help="Payload mass in kg (default: 2.0)")
     parser.add_argument("--threshold", type=float, default=0.3,
                         help="Success distance threshold m (default: 0.3)")
     parser.add_argument("--vis", action="store_true",
@@ -191,10 +214,11 @@ def main():
 
     print(f"\n{'='*60}")
     print(f"MR.CAP Factor-Graph Scaling Experiment")
-    print(f"  robots:   {n_values}")
-    print(f"  distance: {args.distance} m")
-    print(f"  horizon:  {args.horizon}")
-    print(f"  v_max:    {args.v_max} m/s")
+    print(f"  robots:       {n_values}")
+    print(f"  distance:     {args.distance} m")
+    print(f"  horizon:      {args.horizon}")
+    print(f"  v_max:        {args.v_max} m/s")
+    print(f"  payload_mass: {args.payload_mass} kg")
     print(f"{'='*60}\n")
 
     all_results = []
@@ -208,6 +232,7 @@ def main():
             success_threshold=args.threshold,
             horizon=args.horizon,
             v_max=args.v_max,
+            payload_mass=args.payload_mass,
             visualise=args.vis and idx == 0,
             sim_speed=args.sim_speed,
         )
@@ -215,22 +240,25 @@ def main():
 
         status = "SUCCESS" if result["success"] else "TIMEOUT"
         print(
-            f"  [{status}]  final_error={result['final_error_m']:.3f} m"
+            f"  [{status}]  payload={result['payload_mass_kg']:.1f} kg"
+            f"  final_error={result['final_error_m']:.3f} m"
             f"  deviation={result['mean_deviation_m']:.3f} m"
             f"  solve={result['solve_time_mean_ms']:.1f} ± {result['solve_time_std_ms']:.1f} ms"
+            f"  sat={result['sat_frac']*100:.1f}%  peak={result['peak_torque_Nm']:.1f} Nm"
             f"  steps={result['n_steps']}"
         )
 
     # Summary table
-    print(f"\n{'='*60}")
-    print(f"{'n':>4}  {'status':>8}  {'final_err(m)':>12}  {'deviation(m)':>12}  {'solve_mean(ms)':>14}  {'solve_max(ms)':>13}")
-    print(f"{'-'*4}  {'-'*8}  {'-'*12}  {'-'*12}  {'-'*14}  {'-'*13}")
+    print(f"\n{'='*75}")
+    print(f"{'n':>4}  {'status':>8}  {'final_err(m)':>12}  {'deviation(m)':>12}  {'solve_mean(ms)':>14}  {'sat%':>6}  {'peak(Nm)':>9}")
+    print(f"{'-'*4}  {'-'*8}  {'-'*12}  {'-'*12}  {'-'*14}  {'-'*6}  {'-'*9}")
     for r in all_results:
         status = "OK" if r["success"] else "TIMEOUT"
         print(
             f"{r['n_robots']:>4}  {status:>8}  "
             f"{r['final_error_m']:>12.3f}  {r['mean_deviation_m']:>12.3f}  "
-            f"{r['solve_time_mean_ms']:>14.2f}  {r['solve_time_max_ms']:>13.2f}"
+            f"{r['solve_time_mean_ms']:>14.2f}  "
+            f"{r['sat_frac']*100:>6.1f}  {r['peak_torque_Nm']:>9.2f}"
         )
     print(f"{'='*60}\n")
 
