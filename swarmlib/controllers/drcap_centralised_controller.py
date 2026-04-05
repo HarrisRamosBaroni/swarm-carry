@@ -84,22 +84,9 @@ def _r2r_distance_error(
     robot1 = values.atVector(this.keys()[0])
     robot2 = values.atVector(this.keys()[1])
 
-    # print('robot1:', robot1)
-    # print('robot2:', robot2)
-
-    # print('robot1[0:2]:', robot1[0:2])
-    # print('robot2[0:2]:', robot2[0:2])
-
     current_distance = float(np.linalg.norm(robot1[0:2] - robot2[0:2]))
-    # error = np.array([abs(current_distance - measurement)]) #abs might be unnecessary
-    # error = abs(current_distance - measurement) #abs might be unnecessary #already np array bc of measurement
     error = np.array([current_distance - measurement[0]]) #robuster way (apprently, i don't think it was the issue) => although abs() was probably not smart
 
-    # if jacobians is not None: #no clue what this is
-    #     print("mes:",measurement)
-    #     print("len mes:",len(measurement))
-    #     jacobians[0] = np.eye(len(measurement))
-    #     print('r2r jacobians[0]', jacobians[0])
 
     if jacobians is not None:
         diff = robot1[0:2] - robot2[0:2]
@@ -115,7 +102,7 @@ def _r2r_distance_error(
         jacobians[0] = J
         jacobians[1] = -J
 
-    print('err2:',error) #TODO => problem might be that it doesn't expect a scalor, try to see if you can turn it into a matrix somehow
+    print('err2:',error) 
 
     return error
 
@@ -135,10 +122,7 @@ def _pull_in_error(
 
     error = robot[0:2] - centroid[0:2] #don't care about angle, only care about x,y
 
-    # if jacobians is not None:
-    #     jacobians[0] = np.eye(2) #2 dimenions: x and y ?
-    #     jacobians[1] = np.eye(2) #a second one bc 2 variables ?
-    #     # print('_pull_in_error jacobians[0]', jacobians[0])
+    
 
     if jacobians is not None:
         J_robot = np.zeros((2, 3))
@@ -153,7 +137,6 @@ def _pull_in_error(
         jacobians[0] = J_robot
         jacobians[1] = J_centroid
 
-    # print('err4:',error)
     return error
 
 
@@ -179,8 +162,6 @@ def _motion_model_error( #FORCE include stuff here please and thank you
         jacobians[0] = -I3
         jacobians[1] = -dt * I3
         jacobians[2] =  I3
-
-    print('err3:',error)
 
     return error
 
@@ -298,12 +279,6 @@ class DRCapController(BaseController):
         def Ck(j): return gtsam.symbol('C', j)
         def Uk(j): return gtsam.symbol('U', j)
 
-        # def Xk(i,j): return gtsam.symbol('X', i, j) #Note: might be def X0k(j): return gtsam.symbol('X', j), then make them in loop: 1 per robot
-
-        # #right now only 2 robots until i figure out how to make it N robots
-        # def X0k(j): return gtsam.symbol('Z', j)
-        # def X1k(j): return gtsam.symbol('Y', j)
-
         #make as many robot nodes as needed
         robot_nodes_fg = []
         for i in range(self.num_robots):
@@ -318,9 +293,6 @@ class DRCapController(BaseController):
             current_robot_nodes_fg = []
             for i in range(self.num_robots):
                 current_robot_nodes_fg.append(robot_nodes_fg[i](j)) 
-
-            # kX0 = X0k(j)
-            # kX1 = X1k(j)
 
             # State prior
             if j == 0:
@@ -353,21 +325,6 @@ class DRCapController(BaseController):
             
 
             #robot to robot factor
-            # print("1:",self._robots_init_pos[0])
-            # print("2:",self._robots_init_pos[1])
-
-            print("kX0:",np.array([float(self._robots_init_pos[0,0]), float(self._robots_init_pos[0,1]), 0.0]))
-            print("kX1:",np.array([float(self._robots_init_pos[1,0]), float(self._robots_init_pos[1,1]), 0.0]))
-            print("kX0.dtype:",np.array([float(self._robots_init_pos[0,0]), float(self._robots_init_pos[0,1]), 0.0]).dtype)
-            print("kX1.dtype:",np.array([float(self._robots_init_pos[1,0]), float(self._robots_init_pos[1,1]), 0.0]).dtype)
-            
-            # graph.add(gtsam.CustomFactor(
-            #     self._noise_r2r, [kX0, kX1], partial(_r2r_distance_error, 
-            #         np.array([
-            #             np.linalg.norm(self._robots_init_pos[0] - self._robots_init_pos[1])
-            #             ])
-            #             )))  #use initial distance, I think that's what they did in the paper, unless they compared with last time step ?
-            
             for i in range(self.num_robots):
                 graph.add(gtsam.CustomFactor(
                 self._noise_r2r, [current_robot_nodes_fg[i], current_robot_nodes_fg[(i+1)%self.num_robots]], partial(_r2r_distance_error, 
@@ -376,23 +333,12 @@ class DRCapController(BaseController):
                         ])
                         ))) 
             
-            # init.insert(kX0, np.array([float(self._robots_init_pos[0,0]), float(self._robots_init_pos[0,1]), 0.0])) #set initial value ? #TODO idk if setting orientation = 0 for all of them is wise...
-            # init.insert(kX1, np.array([float(self._robots_init_pos[1,0]), float(self._robots_init_pos[1,1]), 0.0]))
-
+            
             #initialise all robot nodes
             for i in range(self.num_robots):
                 init.insert(current_robot_nodes_fg[i], np.array([float(self._robots_init_pos[i,0]), float(self._robots_init_pos[i,1]), 0.0])) #angle assumption here is wrong but we do nothing with angles so doesn't matter really
 
 
-            print("self._noise_r2r:",self._noise_r2r)
-            print("self._noise_pull_in:",self._noise_pull_in)
-
-            #pull in factor (for each robot)
-            # graph.add(gtsam.CustomFactor(
-            #     self._noise_pull_in, [kX0, kC], partial(_pull_in_error, 0.0))) #measurement is irrelevant bc never read
-            # graph.add(gtsam.CustomFactor(
-            #     self._noise_pull_in, [kX1, kC], partial(_pull_in_error, 0.0))) 
-          
             #pull in factor (all robot nodes)
             for i in range(self.num_robots):
                 graph.add(gtsam.CustomFactor(self._noise_pull_in, [current_robot_nodes_fg[i], kC], partial(_pull_in_error, 0.0)))
