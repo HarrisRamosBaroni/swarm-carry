@@ -13,7 +13,7 @@ with a world-frame Euler integrator, which is exact for holonomic drive.
 Factor graph structure (receding horizon of N steps):
   Variables:
     C_j in R^3  -- centroid pose [x, y, theta]   for j = k .. k+N
-    U_j in R^3  -- centroid control [vx, vy, omega]  for j = k .. k+N-1 #FORCE: include additional sum of forces variable (ax and ay, maybe torque as well ?)
+    U_j in R^3  -- centroid control [vx, vy, omega]  for j = k .. k+N-1 
 
     X^i_j in R^3 -- i-th robot pose [x, y, theta]   for j = k .. k+N
 
@@ -21,17 +21,17 @@ Factor graph structure (receding horizon of N steps):
     current-state anchor  -- tight prior on C_k (current centroid pose)
     reference priors      -- PriorFactor on C_j toward linear-interp reference
     control regulariser   -- PriorFactor on U_j toward zero
-    motion model          -- C_{j+1} = C_j + dt * U_j   (linear; exact Jacobians) #FORCE: include 2nd der here
+    motion model          -- C_{j+1} = C_j + dt * U_j   (linear; exact Jacobians) 
     terminal anchor       -- tight prior on C_{k+N} at goal
 
     robot to robot (R2R)  -- prior ? keep constant distances between each robot (keep current formation)
     centroid pull-in      -- prior ? pull centroid position towards each robot (so effectively pull it towards formation center)
-    #FORCE add a prior for measured cum forces (add all forces as vectors using orient of bots) 
+    
     
 
 Note: The obstacle avoidance factor from the original DRCap was removed for simplification
 
-Per-robot velocity (holonomic rigid body): #FORCE I don't think we include anything on robots
+Per-robot velocity (holonomic rigid body):
   v_robot_i = v_c + omega_c x r_i
   where r_i = [dx, dy] from centroid to robot i (fixed at reset).
 
@@ -69,9 +69,7 @@ def _prior_error(
     error = v - measurement
     if jacobians is not None:
         jacobians[0] = np.eye(len(measurement))
-        print('_prior_error jacobians[0]', jacobians[0])
 
-    print('err1:',error)
     return error
 
 def _r2r_distance_error(
@@ -102,7 +100,6 @@ def _r2r_distance_error(
         jacobians[0] = J
         jacobians[1] = -J
 
-    print('err2:',error) 
 
     return error
 
@@ -140,7 +137,7 @@ def _pull_in_error(
     return error
 
 
-def _motion_model_error( #FORCE include stuff here please and thank you
+def _motion_model_error( 
     dt: float,
     this: gtsam.CustomFactor,
     values: gtsam.Values,
@@ -304,8 +301,7 @@ class DRCapController(BaseController):
             graph.add(gtsam.CustomFactor(
                 noise_c, [kC], partial(_prior_error, ref[j].copy()))) 
             
-            print("kC:",ref[j].copy())
-            print("kC.dtype:",ref[j].copy().dtype)
+     
             init.insert(kC, ref[j].copy())
 
             # control regulariser factor (bring control to 0)
@@ -313,8 +309,6 @@ class DRCapController(BaseController):
             u_warm = (ref[j + 1] - ref[j]) / dt if dt > 1e-9 else np.zeros(3)
             graph.add(gtsam.CustomFactor(
                 self._noise_u, [kU], partial(_prior_error, np.zeros(3))))
-            print("kU:",u_warm)
-            print("kU.dtype:",u_warm.dtype)
             init.insert(kU, u_warm)
 
             #motion model factor
@@ -364,7 +358,7 @@ class DRCapController(BaseController):
     # Rigid-body velocity distribution
     # ------------------------------------------------------------------
 
-    def _robot_velocities(self, U_c: np.ndarray) -> np.ndarray: #FORCE i don't think we need to change that, do we ?
+    def _robot_velocities(self, U_c: np.ndarray) -> np.ndarray: 
         """
         Derive per-robot [vx, vy] from centroid control U_c = [vx_c, vy_c, omega_c].
 
