@@ -50,8 +50,8 @@ demos/
 git clone <repo> && cd swarm-carry
 git submodule update --init models/holonomic_dp
 
-# Core library (MuJoCo + numpy — no ROS2 needed)
-pip install -e swarmlib/
+# All Python dependencies + editable swarmlib install (no ROS2 needed)
+pip install -r requirements.txt
 
 # ROS2 workspace (only needed for bridge/agent/central nodes)
 source /opt/ros/jazzy/setup.bash

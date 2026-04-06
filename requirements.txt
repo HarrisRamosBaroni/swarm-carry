@@ -1,0 +1,11 @@
+casadi>=3.6.0
+glfw>=2.0
+gtsam>=4.3a0
+matplotlib>=3.5.0
+mujoco>=3.3.0
+numpy>=2.0.0
+PyOpenGL>=3.1.0
+scipy>=1.7.0
+
+# local package (editable install)
+-e ./swarmlib
