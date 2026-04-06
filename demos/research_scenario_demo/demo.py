@@ -58,6 +58,17 @@ def run(n_robots, speed, duration, payload_mass, visualise):
     )
     obs = env.reset()
 
+    # Tare: MuJoCo's own mass for each fork_base body × g.
+    # The force sensor reports the constraint force at the fixed joint, which
+    # includes the fork base self-weight as well as payload contact force.
+    G = 9.81
+    tare_per_robot = np.array([
+        env.model.body(f'robot_{i}_fork_base').mass * G
+        for i in range(n_robots)
+    ])
+    print(f"  fork_base mass: {tare_per_robot / G} kg  "
+          f"tare: {tare_per_robot} N")
+
     settle_time = 2.0
     settle_steps = int(settle_time / env._dt)
 
@@ -116,38 +127,42 @@ def run(n_robots, speed, duration, payload_mass, visualise):
         viewer.close()
     env.close()
 
-    return np.array(times), np.array(base_log), np.array(wall_log), settle_time
+    return np.array(times), np.array(base_log), np.array(wall_log), settle_time, tare_per_robot
 
 
 def plot_forces(times, base_log, wall_log, settle_time, n_robots, payload_mass,
-                save_path):
+                tare_per_robot, save_path):
     import matplotlib.pyplot as plt
 
     face_labels = ["-x", "+y", "+x", "-y"]
     expected_weight = payload_mass * 9.81
+    total_tare = tare_per_robot.sum()
 
     fig, axes = plt.subplots(3, 1, figsize=(10, 8), sharex=True)
 
-    # Base forces — vertical component (z) per robot
+    # Base forces — tared vertical component per robot
     ax = axes[0]
     for i in range(n_robots):
         label = f"Robot {i} ({face_labels[round(i * 4 / n_robots) % 4]} face)"
-        ax.plot(times, base_log[:, i, 2], label=label)
+        ax.plot(times, base_log[:, i, 2] - tare_per_robot[i], label=label)
+    ax.axhline(0, color='grey', ls=':', lw=0.8)
     ax.axvline(settle_time, color='grey', ls='--', lw=0.8, label='drive start')
-    ax.set_ylabel("Base force  Fz (N)")
-    ax.set_title("Vertical load on fork bases (per robot)")
+    ax.set_ylabel("Tared base Fz (N)")
+    ax.set_title("Vertical load on fork bases — tared (fork-base self-weight subtracted)")
     ax.legend(fontsize=8)
     ax.grid(True, alpha=0.3)
 
-    # Total base Fz vs expected mg
+    # Total base Fz: raw vs tared vs expected mg
     ax = axes[1]
     total_fz = base_log[:, :, 2].sum(axis=1)
-    ax.plot(times, total_fz, color='tab:blue', label='Total base Fz (measured)')
+    tared_fz  = total_fz - total_tare
+    ax.plot(times, total_fz,  color='tab:blue',   label=f'Raw total Fz (includes tare {total_tare:.1f} N)')
+    ax.plot(times, tared_fz,  color='tab:orange', label='Tared total Fz')
     ax.axhline(expected_weight, color='tab:red', ls='--', lw=1.2,
                label=f'Expected mg = {expected_weight:.1f} N')
     ax.axvline(settle_time, color='grey', ls='--', lw=0.8, label='drive start')
     ax.set_ylabel("Total Fz (N)")
-    ax.set_title("Total vertical load vs expected payload weight")
+    ax.set_title("Total vertical load: raw vs tared vs expected payload weight")
     ax.legend(fontsize=8)
     ax.grid(True, alpha=0.3)
 
@@ -192,7 +207,7 @@ def main():
           f"box=({2*PAYLOAD_HX:.1f} x {2*PAYLOAD_HY:.1f} x {2*PAYLOAD_HZ:.1f}) m")
     print(f"  settle=2.0 s  total={args.duration} s\n")
 
-    times, base_log, wall_log, settle_time = run(
+    times, base_log, wall_log, settle_time, tare_per_robot = run(
         n_robots=n,
         speed=args.speed,
         duration=args.duration,
@@ -201,7 +216,7 @@ def main():
     )
 
     plot_forces(times, base_log, wall_log, settle_time, n, args.payload_mass,
-                args.save_plot)
+                tare_per_robot, args.save_plot)
 
 
 if __name__ == "__main__":
