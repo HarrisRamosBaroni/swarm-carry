@@ -11,6 +11,7 @@ Requires: models/holonomic_dp submodule initialised.
   git submodule update --init models/holonomic_dp
 """
 
+import math
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -81,6 +82,47 @@ def mecanum_side_push_formation(
         # Add 0.01 m clearance to avoid initial penetration.
         standoff = payload_hx + _FORK_FRONT_X + 0.01
     return [(-standoff, (i - (n - 1) / 2) * spacing, 0.0) for i in range(n)]
+
+
+def face_contact_formation(
+    n: int,
+    payload_hx: float = 0.30,
+    payload_hy: float = 0.30,
+) -> List[Tuple[float, float, float]]:
+    """
+    Place *n* robots on distinct faces of a box payload, one robot per face,
+    fork walls flush with each face.
+
+    Face assignment (evenly spaced around the 4 faces):
+      n=1: -x
+      n=2: -x, +x  (opposing)
+      n=3: -x, +y, -y
+      n=4: -x, +y, +x, -y
+
+    Parameters
+    ----------
+    payload_hx, payload_hy : payload box half-sizes (must match the scene).
+
+    Returns
+    -------
+    [(x_off, y_off, yaw), ...] offsets from payload centre.
+    """
+    if n < 1 or n > 4:
+        raise ValueError(f"face_contact_formation supports 1–4 robots, got {n}")
+
+    # (dx, dy, yaw, standoff) per face.
+    # dx/dy: unit direction from payload centre toward the robot.
+    # yaw: robot heading so its front (+x body) faces the payload.
+    _faces = [
+        (-1,  0,  0.0,            payload_hx + _FORK_WALL_REACH),   # -x face
+        ( 0,  1, -math.pi / 2,    payload_hy + _FORK_WALL_REACH),   # +y face
+        ( 1,  0,  math.pi,        payload_hx + _FORK_WALL_REACH),   # +x face
+        ( 0, -1,  math.pi / 2,    payload_hy + _FORK_WALL_REACH),   # -y face
+    ]
+
+    indices = [round(i * 4 / n) % 4 for i in range(n)]
+    return [(dx * s, dy * s, yaw) for dx, dy, yaw, s in
+            (_faces[fi] for fi in indices)]
 
 
 # ---------------------------------------------------------------------------

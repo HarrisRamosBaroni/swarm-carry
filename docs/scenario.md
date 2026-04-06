@@ -20,13 +20,19 @@ coordinate to move the payload without dropping it or colliding with obstacles.
 Holonomic drive means each robot can move in any direction independently,
 which matters for maintaining formation while navigating around obstacles.
 
-**Payload:** Rigid body, resting on top of the robots (not pushed from the
+**Payload:** ~~Rigid body, resting on top of the robots (not pushed from the
 side). Robots form a platform underneath it. The payload stays on the robots
 through friction; shear forces at the contact surfaces are the relevant
-sensing modality.
+sensing modality.~~ Rigid body with flat faces (box). Each robot grips a face
+using a forklift-style holder fixed to the robot's front. The holder has a
+horizontal fork base (extends under the payload) and a vertical fork wall
+(presses against the payload face). The payload is supported from below by
+the fork bases and laterally constrained by the fork walls.
 
 **Sensors:**
-- Shear force sensors on the top surface of each robot (robot-payload contact)
+- ~~Shear force sensors on the top surface of each robot (robot-payload contact)~~
+- Force sensor on the fork base bottom plane (vertical load — weight bearing)
+- Force sensor on the fork wall vertical plane (horizontal force into the robot)
 - Robot positions assumed known throughout (e.g. from onboard odometry or
   external localisation). This assumption may be revisited.
 

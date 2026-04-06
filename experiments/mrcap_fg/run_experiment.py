@@ -23,25 +23,16 @@ from pathlib import Path
 import numpy as np
 
 from swarmlib.simulation.mecanum_env import MecanumTransportEnv
-from swarmlib.simulation.generate_mecanum_scene import mecanum_side_push_formation
+from swarmlib.simulation.generate_mecanum_scene import face_contact_formation
 from swarmlib.controllers import MRCapController
 
 
 # ---------------------------------------------------------------------------
-# Formation helper: surround the payload on all sides
+# Payload geometry (box half-sizes) — shared between formation and env
 # ---------------------------------------------------------------------------
-
-def surround_formation(n: int, radius: float = 0.8) -> list:
-    """
-    Place n robots evenly around the payload at given radius.
-    Each robot's yaw points inward toward the payload centre.
-    Returns a list of (x_off, y_off, yaw) tuples.
-    """
-    angles = np.linspace(0, 2 * np.pi, n, endpoint=False)
-    return [
-        (-radius * np.cos(a), -radius * np.sin(a), a + np.pi)
-        for a in angles
-    ]
+PAYLOAD_HX = 0.30   # m
+PAYLOAD_HY = 0.30   # m
+PAYLOAD_HZ = 0.12   # m
 
 
 # ---------------------------------------------------------------------------
@@ -60,7 +51,10 @@ def run_single(
     sim_speed: float = 1.0,
 ) -> dict:
     goal = (distance, 0.0, 0.0)
-    formation = surround_formation(n_robots)
+    payload_size = (PAYLOAD_HX, PAYLOAD_HY, PAYLOAD_HZ)
+    formation = face_contact_formation(n_robots,
+                                       payload_hx=PAYLOAD_HX,
+                                       payload_hy=PAYLOAD_HY)
 
     env = MecanumTransportEnv(
         n_robots=n_robots,
@@ -68,7 +62,8 @@ def run_single(
         goal=goal,
         payload_pos=(0.0, 0.0),
         payload_mass=payload_mass,
-        # payload_size=(0.01, 0.01, 0.01),  # negligible — no contact with robots
+        payload_size=payload_size,
+        vel_feedback=True,
         with_carriage=True,
         dt_control=0.05,
     )
