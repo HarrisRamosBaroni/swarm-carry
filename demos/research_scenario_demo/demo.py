@@ -119,26 +119,40 @@ def run(n_robots, speed, duration, payload_mass, visualise):
     return np.array(times), np.array(base_log), np.array(wall_log), settle_time
 
 
-def plot_forces(times, base_log, wall_log, settle_time, n_robots, save_path):
+def plot_forces(times, base_log, wall_log, settle_time, n_robots, payload_mass,
+                save_path):
     import matplotlib.pyplot as plt
 
     face_labels = ["-x", "+y", "+x", "-y"]
+    expected_weight = payload_mass * 9.81
 
-    fig, axes = plt.subplots(2, 1, figsize=(10, 6), sharex=True)
+    fig, axes = plt.subplots(3, 1, figsize=(10, 8), sharex=True)
 
-    # Base forces — vertical component (z)
+    # Base forces — vertical component (z) per robot
     ax = axes[0]
     for i in range(n_robots):
         label = f"Robot {i} ({face_labels[round(i * 4 / n_robots) % 4]} face)"
         ax.plot(times, base_log[:, i, 2], label=label)
     ax.axvline(settle_time, color='grey', ls='--', lw=0.8, label='drive start')
     ax.set_ylabel("Base force  Fz (N)")
-    ax.set_title("Vertical load on fork bases (payload weight)")
+    ax.set_title("Vertical load on fork bases (per robot)")
+    ax.legend(fontsize=8)
+    ax.grid(True, alpha=0.3)
+
+    # Total base Fz vs expected mg
+    ax = axes[1]
+    total_fz = base_log[:, :, 2].sum(axis=1)
+    ax.plot(times, total_fz, color='tab:blue', label='Total base Fz (measured)')
+    ax.axhline(expected_weight, color='tab:red', ls='--', lw=1.2,
+               label=f'Expected mg = {expected_weight:.1f} N')
+    ax.axvline(settle_time, color='grey', ls='--', lw=0.8, label='drive start')
+    ax.set_ylabel("Total Fz (N)")
+    ax.set_title("Total vertical load vs expected payload weight")
     ax.legend(fontsize=8)
     ax.grid(True, alpha=0.3)
 
     # Wall forces — horizontal component (x in wall site frame)
-    ax = axes[1]
+    ax = axes[2]
     for i in range(n_robots):
         label = f"Robot {i} ({face_labels[round(i * 4 / n_robots) % 4]} face)"
         ax.plot(times, wall_log[:, i, 0], label=label)
@@ -159,11 +173,11 @@ def plot_forces(times, base_log, wall_log, settle_time, n_robots, save_path):
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Research scenario demo — force sensor validation")
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+                                     description="Research scenario demo — force sensor validation")
     parser.add_argument("--n-robots", type=int, default=4)
     parser.add_argument("--speed", type=float, default=0.15,
-                        help="Forward speed m/s during drive phase (default: 0.15)")
+                        help="Forward speed m/s during drive phase")
     parser.add_argument("--payload-mass", type=float, default=2.0, help="kg")
     parser.add_argument("--duration", type=float, default=15.0, help="seconds")
     parser.add_argument("--no-viewer", action="store_true",
@@ -186,7 +200,8 @@ def main():
         visualise=not args.no_viewer,
     )
 
-    plot_forces(times, base_log, wall_log, settle_time, n, args.save_plot)
+    plot_forces(times, base_log, wall_log, settle_time, n, args.payload_mass,
+                args.save_plot)
 
 
 if __name__ == "__main__":
