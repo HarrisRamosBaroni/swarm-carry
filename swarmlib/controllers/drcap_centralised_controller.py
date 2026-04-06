@@ -210,6 +210,7 @@ class DRCapController(BaseController):
 
         self._sigma_r2r  = float(cfg.get("sigma_r2r",   0.05))
         self._sigma_pull_in  = float(cfg.get("sigma_pull_in",   0.3))
+        self._sigma_anc_robots = float(cfg.get("sigma_pull_in",   2)) #TESTING
 
         # Formation offsets r_i = [dx, dy] from centroid to robot i (world frame).
         # Rigid body: these stay constant throughout the run.
@@ -228,7 +229,8 @@ class DRCapController(BaseController):
         self._noise_mm  = gtsam.noiseModel.Diagonal.Sigmas(np.full(3, self._sigma_mm))
 
         self._noise_r2r = gtsam.noiseModel.Diagonal.Sigmas(np.full(1, self._sigma_r2r)) #only 1D num bc distance
-        self._noise_pull_in = gtsam.noiseModel.Diagonal.Sigmas(np.array([self._sigma_pull_in, self._sigma_pull_in])) #back to 2D #made 3D for simplification, but we don't care about angle (since very high uncertainty. only care about x and y)
+        self._noise_pull_in = gtsam.noiseModel.Diagonal.Sigmas(np.array([self._sigma_pull_in, self._sigma_pull_in])) #2D bc only care about x and y, not angle
+        self._noise_anc_robots = gtsam.noiseModel.Diagonal.Sigmas(np.array([self._sigma_anc_robots, self._sigma_anc_robots, 9999])) 
 
         self._robots_init_pos = self._r.copy() #intial position of robots 
 
@@ -291,6 +293,11 @@ class DRCapController(BaseController):
             for i in range(self.num_robots):
                 current_robot_nodes_fg.append(robot_nodes_fg[i](j)) 
 
+            #time step k+1
+            next_ts_robot_nodes_fg = []
+            for i in range(self.num_robots):
+                next_ts_robot_nodes_fg.append(robot_nodes_fg[i](j+1)) 
+
             # State prior
             if j == 0:
                 noise_c = self._noise_anc
@@ -316,6 +323,12 @@ class DRCapController(BaseController):
             graph.add(gtsam.CustomFactor(
                 self._noise_mm, [kC, kU, kC1],
                 partial(_motion_model_error, dt)))
+            
+            #motion model for robots factor (for all robots)
+            for i in range(self.num_robots):
+                graph.add(gtsam.CustomFactor(
+                    self._noise_mm, [current_robot_nodes_fg[i], kU, next_ts_robot_nodes_fg[i]], #using general control input, as per paper (although makes no sense if robots not connected)
+                    partial(_motion_model_error, dt)))
             
 
             #robot to robot factor
@@ -344,6 +357,14 @@ class DRCapController(BaseController):
         graph.add(gtsam.CustomFactor(
             self._noise_anc, [kCN], partial(_prior_error, goal.copy())))
         init.insert(kCN, ref[N].copy())
+
+        #terminal anchor on last state of each robot
+        #I don't really understand why, but apparently this is necessary for the code to run, so I just put a huge noise value so the factor graph doesn't pay much attention to it
+        for i in range(self.num_robots):
+            #kRN = next_ts_robot_nodes_fg[-1](N)
+            graph.add(gtsam.CustomFactor(
+                self._noise_anc_robots, [robot_nodes_fg[i](N)], partial(_prior_error, goal.copy())))
+            init.insert(robot_nodes_fg[i](N), ref[N].copy())
 
         params = gtsam.LevenbergMarquardtParams()
         params.setVerbosity("SILENT")
