@@ -2,8 +2,8 @@ import pigpio
 import time
 
 # Pin configuration (BCM numbering)
-SDA = 0
-SCL = 11
+SDA = 17
+SCL = 4
 
 I2C_ADDR = 0x2A  # NAU7802 default address
 
@@ -24,7 +24,7 @@ if bb_i2c != 0:
 
 def i2c_read(register, count):
     # Write register address, then read
-    (count_written, _, _) = pi.bb_i2c_zip(SDA, [
+    (count_written, _) = pi.bb_i2c_zip(SDA, [
         4, I2C_ADDR,       # Set device address (write)
         2, register,       # Write register address
         4, I2C_ADDR | 1,   # Repeated start, read mode
@@ -35,6 +35,7 @@ def i2c_read(register, count):
 
 def read_adc_raw():
     data = i2c_read(REG_ADCO_B2, 3)
+    print(data)
     if len(data) != 3:
         return None
 
@@ -59,7 +60,7 @@ def initialise_scale():
 
 
 try:
-    # initialise_scale()
+    initialise_scale()
     
     while True:
         raw = read_adc_raw()
