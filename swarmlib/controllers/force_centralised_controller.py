@@ -9,35 +9,35 @@ Implements the core idea from:
   Jaafar et al., "Distributed Velocity-based Global Formation Control and Planning for Object Transport",
   not yet published at time of writing.
 
-Adapted for holonomic (mecanum) robots: the diff-drive arc motion model is replaced
-with a world-frame Euler integrator, which is exact for holonomic drive.
-
 Factor graph structure (receding horizon of N steps):
   Variables:
     C_j in R^3  -- centroid pose [x, y, theta]   for j = k .. k+N
     U_j in R^3  -- centroid control [vx, vy, omega]  for j = k .. k+N-1 #FORCE: include additional sum of forces variable (ax and ay, maybe torque as well ?)
 
-    X^i_j in R^3 -- i-th robot pose [x, y, theta]   for j = k .. k+N
-    #NOTE might need U^{r^i}_j => control input for robot i at time step j, if DRCAP was assuming connected robots after all
-    #might also need a mass variable for mass of payload (time invariant)
+    R_{i_j} in R^3 -- i-th robot pose [x, y, theta]   for j = k .. k+N
+    U_{i_j} in R^3 -- i-th robot control [vx, vy, omega]   for j = k .. k+N
+    m in R         -- mass of centroid (time invariant)
     
   Factors:
     current-state anchor  -- tight prior on C_k (current centroid pose)
+    current-state anchor  -- tight prior on R_{i_k} (current robot pose)
     reference priors      -- PriorFactor on C_j toward linear-interp reference
-    control regulariser   -- PriorFactor on U_j toward zero
-    motion model          -- C_{j+1} = C_j + dt * U_j   (linear; exact Jacobians) #FORCE: include 2nd der here
+    robot reference priors -- PriorFactor on R_{i_k} toward linear-interp reference (taking offset between robot and centroid into account)
+    control regulariser centroid  -- PriorFactor on U_j toward zero
+    control regulariser robot  -- PriorFactor on U_j toward zero
+    motion model for robots -- R_{i_{j+1}} = R_{i_j} + dt * U_{i_j}   (linear; exact Jacobians) #FORCE: include 2nd der here
+    motion model for centroid -- R_{i_{j+1}} = R_{i_j} + dt * U_{i_j}   (linear; exact Jacobians) #FORCE: include 2nd der here
+
     terminal anchor       -- tight prior on C_{k+N} at goal
 
     robot to robot (R2R)  -- prior ? keep constant distances between each robot (keep current formation)
     centroid pull-in      -- prior ? pull centroid position towards each robot (so effectively pull it towards formation center)
-    #FORCE add a prior for measured cum forces (add all forces as vectors using orient of bots) 
-    
+
 
 Note: The obstacle avoidance factor from the original DRCap was removed for simplification
 
-Per-robot velocity (holonomic rigid body): #FORCE I don't think we include anything on robots
-  v_robot_i = v_c + omega_c x r_i
-  where r_i = [dx, dy] from centroid to robot i (fixed at reset).
+Per-robot velocity (holonomic rigid body): 
+  defined by their respective control inputs
 
 #TODO add a high-cost factor in case forces are moer than 4-5kg to avoid breaking loadcells
 #TODO add a way to estimate forces while doing the MPC thing #currently just assuming cst
@@ -45,7 +45,7 @@ Per-robot velocity (holonomic rigid body): #FORCE I don't think we include anyth
 #TODO remember entire factor graph as opposed to creating a new one every time step
 #TODO make it decentralised
 #TODO Remove real centroid position being fed in and use factor graph node instead (note: get it to work with real measurement first)
-
+#TODO ROS
 
 
 """
