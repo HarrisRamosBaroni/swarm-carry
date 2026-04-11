@@ -11,12 +11,12 @@ try:
     if not scale.begin():
         print("NAU7802 init failed")
     else:
-        tare = scale.get_average(samples=10, timeout_ms=2000)
-        scale.set_zero_offset(tare)
-        scale.set_calibration_factor(1000.0)  # counts per unit (adjust)
+#        tare = scale.get_average(samples=10, timeout_ms=2000)
+#        scale.set_zero_offset(tare)
+        scale.set_calibration_factor(1.0)  # counts per unit (adjust)
 
-        for _ in range(10):
-            w = scale.get_weight(allow_negative=False, samples=3, timeout_ms=500)
+        while True:
+            w = scale.get_weight(allow_negative=True, samples=1, timeout_ms=500)
             print(f"Weight: {w:.3f}")
             time.sleep(0.5)
 finally:
