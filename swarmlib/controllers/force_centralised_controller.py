@@ -25,8 +25,8 @@ Factor graph structure (receding horizon of N steps):
     robot reference priors -- PriorFactor on R_{i_k} toward linear-interp reference (taking offset between robot and centroid into account)
     control regulariser centroid  -- PriorFactor on U_j toward zero
     control regulariser robot  -- PriorFactor on U_j toward zero
-    motion model for robots -- R_{i_{j+1}} = R_{i_j} + dt * U_{i_j}   (linear; exact Jacobians) #FORCE: include 2nd der here
-    motion model for centroid -- R_{i_{j+1}} = R_{i_j} + dt * U_{i_j}   (linear; exact Jacobians) #FORCE: include 2nd der here
+    motion model for robots -- R_{i_{j+1}} = R_{i_j} + dt * U_{i_j}   (linear; exact Jacobians) 
+    motion model for centroid --  C_{j+1} = C_j + dt * U_j + 0.5 * F / m   , with F cumulative forces and m mass
 
     terminal anchor       -- tight prior on C_{k+N} at goal
 
@@ -172,7 +172,7 @@ def _motion_model_error(
 
     return error
 
-def _motion_force_model_error( #FORCE include stuff here please and thank you
+def _motion_force_model_error(
     dt: float,
     forces: np.ndarray,
     this: gtsam.CustomFactor,
@@ -480,7 +480,7 @@ class ForceCentralisedController(BaseController):
     # Rigid-body velocity distribution
     # ------------------------------------------------------------------
 
-    def _robot_velocities(self, U_c: np.ndarray) -> np.ndarray: #FORCE i don't think we need to change that, do we ?
+    def _robot_velocities(self, U_c: np.ndarray) -> np.ndarray: 
         """
         Derive per-robot [vx, vy] from centroid control U_c = [vx_c, vy_c, omega_c].
 
@@ -499,7 +499,7 @@ class ForceCentralisedController(BaseController):
         scale  = np.where(speeds > self._v_max, self._v_max / speeds, 1.0)
         return np.column_stack([vx * scale, vy * scale])
     
-    def _robot_velocities2(self, U_c_all: np.ndarray) -> np.ndarray: #FORCE i don't think we need to change that, do we ?
+    def _robot_velocities2(self, U_c_all: np.ndarray) -> np.ndarray: 
         """
         Derive per-robot [vx, vy] from centroid control U_c = [vx_c, vy_c, omega_c].
 
