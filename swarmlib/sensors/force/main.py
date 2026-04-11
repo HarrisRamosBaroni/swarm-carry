@@ -7,6 +7,7 @@ from nau7802_smbus import NAU7802
 bus = 2
 
 scale = NAU7802(bus=bus)
+print(scale.available())
 try:
     if not scale.begin():
         print("NAU7802 init failed")
