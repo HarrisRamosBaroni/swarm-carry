@@ -2,8 +2,8 @@ import pigpio
 import time
 
 # Pin configuration (BCM numbering)
-SDA = 17
-SCL = 4
+SDA = 11
+SCL = 7
 
 I2C_ADDR = 0x2A  # NAU7802 default address
 
