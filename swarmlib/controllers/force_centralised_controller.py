@@ -12,7 +12,7 @@ Implements the core idea from:
 Factor graph structure (receding horizon of N steps):
   Variables:
     C_j in R^3  -- centroid pose [x, y, theta]   for j = k .. k+N
-    U_j in R^3  -- centroid control [vx, vy, omega]  for j = k .. k+N-1 #FORCE: include additional sum of forces variable (ax and ay, maybe torque as well ?)
+    U_j in R^3  -- centroid control [vx, vy, omega]  for j = k .. k+N-1 
 
     R_{i_j} in R^3 -- i-th robot pose [x, y, theta]   for j = k .. k+N
     U_{i_j} in R^3 -- i-th robot control [vx, vy, omega]   for j = k .. k+N
