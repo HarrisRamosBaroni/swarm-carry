@@ -8,20 +8,20 @@ from smbus2 import SMBus, i2c_msg
 # NAU7802 constants (7-bit address)
 NAU7802_ADDR = 0x2A
 NAU7802_ADCO_B2 = 0x12
-NAU7802_ADC = 0x10
-NAU7802_CTRL1 = 0x0A
-NAU7802_CTRL2 = 0x0B
+NAU7802_ADC = 0x15
+NAU7802_CTRL1 = 0x01
+NAU7802_CTRL2 = 0x02
 NAU7802_PU_CTRL = 0x00
-NAU7802_PGA_PWR = 0x0D
+NAU7802_PGA_PWR = 0x1C
 
-NAU7802_PU_CTRL_RR = 1
-NAU7802_PU_CTRL_PUD = 2
-NAU7802_PU_CTRL_PUA = 3
-NAU7802_PU_CTRL_PUR = 4
-NAU7802_PU_CTRL_CS = 0
-NAU7802_PU_CTRL_AVDDS = 5
+NAU7802_PU_CTRL_RR = 0
+NAU7802_PU_CTRL_PUD = 1
+NAU7802_PU_CTRL_PUA = 2
+NAU7802_PU_CTRL_PUR = 3
+NAU7802_PU_CTRL_CS = 4
+NAU7802_PU_CTRL_CR = 5
+NAU7802_PU_CTRL_AVDDS = 7
 NAU7802_CTRL1_VLDO = 3
-NAU7802_PU_CTRL_CR = 6  # control ready bit used for 'available' check (matches original semantics)
 
 # module-level calibration storage
 _zero_offset = 0
@@ -156,11 +156,20 @@ class NAU7802:
         if adc != 0xFF:
             adc |= 0x30
             ok &= self._write_register(NAU7802_ADC, adc)
-        # PGA cap best-effort
+        # Enable PGA capacitor (bit 7 of PGA_PWR)
         try:
-            self._set_bit(NAU7802_PGA_PWR, 0)
+            self._set_bit(NAU7802_PGA_PWR, 7)
         except Exception:
             pass
+        # Calibrate internal AFE (CTRL2 bit 2 = CALS; waits for it to clear)
+        ok &= self._set_bit(NAU7802_CTRL2, 2)
+        deadline = time.time() + 1.0
+        while time.time() < deadline:
+            if not self._get_bit(NAU7802_CTRL2, 2):
+                break
+            time.sleep(0.001)
+        else:
+            ok = False
         time.sleep(0.2)
         return bool(ok)
 
