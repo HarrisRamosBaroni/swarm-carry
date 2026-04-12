@@ -44,7 +44,7 @@ def main():
 
     rospy.init_node("force_sensor", anonymous=True)
     pub = rospy.Publisher("/forces", Float32MultiArray, queue_size=10)
-    rate = rospy.Rate(2)  # 2 Hz to match 0.5s sleep
+    rate = rospy.Rate(10)  # in Hz
 
     print("Reading force data. Press Ctrl+C to stop.\n")
     try:
