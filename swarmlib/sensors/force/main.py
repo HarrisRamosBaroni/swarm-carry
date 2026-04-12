@@ -1,9 +1,12 @@
 import time
-from qwiic_i2c import I2CDriver
+import qwiic_i2c
 from qwiic_nau7802 import QwiicNAU7802
 
-bus = 2
-driver = I2CDriver(bus)
+bus_id = 2
+print(qwiic_i2c._drivers)
+driver = qwiic_i2c.get_i2c_driver(iBus=bus_id)
+print(driver)
+print(driver.scan())
 
 scale = QwiicNAU7802(i2c_driver=driver)
 try:
