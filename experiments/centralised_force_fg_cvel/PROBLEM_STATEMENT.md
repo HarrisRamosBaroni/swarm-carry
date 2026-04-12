@@ -1,6 +1,6 @@
-# Problem Statement: Centralised Force Factor-Graph Controller for Multi-Robot Payload Transport
+# Problem Statement: Centralised Force Factor-Graph Controller for Multi-Robot Payload Transport (with un-actuated centroid velocity)
 
-Note: this is very similar to DR.CAP, only also including force measurements, and using individual control inputs for each robot.
+Note: in short, the difference between `\centralised_force_fg` and `\centralised_force_fg_cvel` is that `\centralised_force_fg` conserves the MR.CAP and DR.CAP concept of imagining a control input for the centroid, when `\centralised_force_fg_cvel` instead stores a node for the velocity of the centroid (world frame), that is updated based on the measured forces and the estimtated mass at time step t.
 
 ## Setup
 
@@ -9,7 +9,7 @@ a payload to a goal pose. The robots try to maintain fixed positions relative to
 throughout the motion — the system is treated as a rigid body for the payload, and rigid bodies as well for the robots.
 
 The centroid state is $\mathbf{c}_k = [x_k, y_k, \theta_k]^\top \in \mathbb{R}^3$.
-The centroid control is $\mathbf{u}_k = [v_x, v_y, \omega]^\top \in \mathbb{R}^3$ (world-frame
+The centroid velocity is $\mathbf{v}_k = [v_x, v_y, \omega]^\top \in \mathbb{R}^3$ (world-frame
 translational velocity and angular rate).
 The $i$-th robot state is  $\mathbf{r}_{i_k} = [x_k, y_k, \theta_k]^\top \in \mathbb{R}^3$.
 The $i$-th robot control is $\mathbf{u}_{i_k} = [v_x, v_y, \omega]^\top \in \mathbb{R}^3$(world-frame
@@ -22,7 +22,7 @@ The system will be closed-loop, as the positions of each robot are nodes of the 
 
 Centroid dynamics are integrated with a world-frame 2nd order step:
 $$
-\mathbf{c}_{k+1} = \mathbf{c}_k + \Delta t \, \mathbf{u}_k + \frac{1}{2} \Delta t ^2 \frac{F}{m} $$
+\mathbf{c}_{k+1} = \mathbf{c}_k + \Delta t \, \mathbf{v}_k + \frac{1}{2} \Delta t ^2 \frac{F}{m} $$
 
 And robot dynamic with a world-frame 1st order (euler) step:
 $$
@@ -36,7 +36,7 @@ $m$ corresponds to the *mass* node of the factor graph: mass of payload is assum
 At each control step $k$, a receding-horizon factor graph is built over a horizon of $N$ steps.
 The decision variables are:
 $$
-\{ \mathbf{c}_j \}_{j=k}^{k+N}, \quad \{ \mathbf{u}_j \}_{j=k}^{k+N-1} \quad \{ \mathbf{r}_{i_j} \}_{j=k}^{k+N-1} \quad \{ \mathbf{u}_{i_j} \}_{j=k}^{k+N-1} \quad \{ m \}
+\{ \mathbf{c}_j \}_{j=k}^{k+N}, \quad \{ \mathbf{v}_j \}_{j=k}^{k+N-1} \quad \{ \mathbf{r}_{i_j} \}_{j=k}^{k+N-1} \quad \{ \mathbf{u}_{i_j} \}_{j=k}^{k+N-1} \quad \{ m \}
 $$
 
 The graph contains 11 types of factors (unless I forgot some):
@@ -47,13 +47,13 @@ The graph contains 11 types of factors (unless I forgot some):
 | Current-state anchor | $\mathbf{r}_{i_k}$ | Hard-pins the graph to the measured robot poses ($\sigma_\text{anchor} = 0.01$) — see note below |
 | Reference prior (centroid) | $\mathbf{c}_j$, $j > k$ | Pulls the trajectory toward a linear-interpolated reference from $\mathbf{c}_k$ to $\mathbf{c}_\text{goal}$ ($\sigma_x = 0.5$) |
 | Reference prior (robots)| $\mathbf{r}_{i_j}$, $j > k$ | Pulls the trajectory toward a linear-interpolated reference from $\mathbf{c}_k$ to $\mathbf{c}_\text{goal}$, with a bias to account for the robot's current distance from the centroid ($\sigma_x = 0.5$) |
-| Control regulariser (centroid)| $\mathbf{u}_j$ | Penalises control effort of centroid away from zero ($\sigma_u = 0.3$) |
+| Control regulariser (centroid)| $\mathbf{v}_j$ | Penalises control effort of centroid away from zero ($\sigma_u = 0.3$) |
 | Control regulariser (robots)| $\mathbf{u}_{i_j}$ | Penalises control effort of robots away from zero ($\sigma_u = 0.3$) |
-| Force Motion model | $(\mathbf{c}_j, \mathbf{u}_j, \mathbf{c}_{j+1}, m)$ | Near-equality enforcing the Euler step ($\sigma_\text{mm} = 10^{-4}$) |
+| Force Motion model | $(\mathbf{c}_j, \mathbf{v}_j, \mathbf{c}_{j+1}, m)$ | Near-equality enforcing the Euler step ($\sigma_\text{mm} = 10^{-4}$) |
 | Terminal anchor | $\mathbf{c}_{k+N}$ | Hard-pins the horizon endpoint to the goal ($\sigma_\text{anchor} = 0.01$) |
 | Robot to robot | $(\mathbf{r}_{i_j}, \mathbf{r}_{(i+1)_j})$ | Penalises variation in distances between 2 robots (maintain initial formation) |
 | Pull-in | $(\mathbf{r}_{i_j}, \mathbf{c}_j)$ | Pulls the centroid position towards each robot, to place it in the middle of the formation |
-| Robot Motion model | $(\mathbf{r}_{i_j}, \mathbf{u}_j, \mathbf{r}_{(i+1)_j} )$ | Near-equality enforcing the Euler step ($\sigma_\text{mm} = 10^{-4}$). Forces are not considered here, only using: $$\mathbf{r}_{i_{k+1}} = \mathbf{r}_{i_k} + \Delta t \, \mathbf{u}_k  $$ |
+| Robot Motion model | $(\mathbf{r}_{i_j}, \mathbf{u}_{i_j}, \mathbf{r}_{(i+1)_j} )$ | Near-equality enforcing the Euler step ($\sigma_\text{mm} = 10^{-4}$). Forces are not considered here, only using: $$\mathbf{r}_{i_{k+1}} = \mathbf{r}_{i_k} + \Delta t \, \mathbf{u}_k  $$ |
 
 The total cost is:
 $$
@@ -85,9 +85,9 @@ This is solved via Levenberg–Marquardt (GTSAM). Because all factors are linear
 variables and the motion model is linear, the graph is a linear least-squares problem and
 LM converges in a single iteration.
 
-Only $\mathbf{u}_{i_0}^*$ are extracted from the solution and applied; the remainder of the
-optimal trajectory $\{\mathbf{c}_1^*, \ldots, \mathbf{c}_N^*, \mathbf{u}_1^*, \ldots,
-\mathbf{u}_{N-1}^* , \mathbf{r}_{i_1}^*, \ldots, \mathbf{r}_{i_N}^*, \mathbf{u}_{i_1}^*, \ldots,
+Only $\mathbf{u}_{i_0}^*$ are extracted from the solution and applied (however, mass and centroid velocity are also extracted and passed as float values. Eventually, they will be nodes part of a factor graph); the remainder of the
+optimal trajectory $\{\mathbf{c}_1^*, \ldots, \mathbf{c}_N^*, \mathbf{v}_1^*, \ldots,
+\mathbf{v}_{N-1}^* , \mathbf{r}_{i_1}^*, \ldots, \mathbf{r}_{i_N}^*, \mathbf{u}_{i_1}^*, \ldots,
 \mathbf{u}_{i_{N-1}}^*  \}$ is discarded. The graph is rebuilt from the new measured state at
 the next control step — standard receding-horizon MPC.
 Note that the factor graph is thus completely rebuilt at every time step (this will eventually change).
@@ -118,6 +118,8 @@ I've however copied them here for accessibility:
 - remember entire factor graph as opposed to creating a new one every time step: a factor graph is created every time step for generating the control inputs (receding horizon). However, when solved by the optimizer, that factor graph is deleted and a completely new one is created, using measurements from simulation (MoCap equivalents), instead of continuously adding to a large factor graph
 
 - (linked to above TODO) implement mass as a factor graph node initialised a single time at the beginning and that keeps being used and re-estimated as a node (currently mass is only a node that's estimated during the receding horizon, then its final value is passed to the next time step factor graph as an initial value, but that's not the right way of doing it)
+
+- (linked to above TODO) implement centroid velocity as a factor graph node initialised a single time at the beginning and that keeps being used and re-estimated as a node
 
 - Remove real centroid position being fed in from Sim and estimate it instead (use factor graph) (note: get system to work correctly first, then we'll look into that)
 
