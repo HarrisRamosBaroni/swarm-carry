@@ -43,8 +43,8 @@ def main():
     print("Reading force data. Press Ctrl+C to stop.\n")
     try:
         while True:
-            h_reading = h_scale.get_weight(allow_negative=True, samples=1, timeout_ms=500)
-            v_reading = v_scale.get_weight(allow_negative=True, samples=1, timeout_ms=500)
+            h_reading = h_scale.get_weight()
+            v_reading = v_scale.get_weight()
             print(f"Horizontal: {h_reading:.3f}  |  Vertical: {v_reading:.3f}")
             time.sleep(0.5)
     except KeyboardInterrupt:
