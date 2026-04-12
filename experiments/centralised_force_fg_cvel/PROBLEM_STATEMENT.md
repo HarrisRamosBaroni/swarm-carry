@@ -47,6 +47,7 @@ The graph contains 11 types of factors (unless I forgot some):
 | Current-state anchor | $\mathbf{r}_{i_k}$ | Hard-pins the graph to the measured robot poses ($\sigma_\text{anchor} = 0.01$) — see note below |
 | Reference prior (centroid) | $\mathbf{c}_j$, $j > k$ | Pulls the trajectory toward a linear-interpolated reference from $\mathbf{c}_k$ to $\mathbf{c}_\text{goal}$ ($\sigma_x = 0.5$) |
 | Reference prior (robots)| $\mathbf{r}_{i_j}$, $j > k$ | Pulls the trajectory toward a linear-interpolated reference from $\mathbf{c}_k$ to $\mathbf{c}_\text{goal}$, with a bias to account for the robot's current distance from the centroid ($\sigma_x = 0.5$) |
+| mass measurement| $m$ | Pulls the mass towards the mass measured by downwards-facing forces ($F_{down} / g$, with $g = 9.81$ )($\sigma_m = 1.0$) |
 | Control regulariser (centroid)| $\mathbf{v}_j$ | Penalises control effort of centroid away from zero ($\sigma_u = 0.3$) |
 | Control regulariser (robots)| $\mathbf{u}_{i_j}$ | Penalises control effort of robots away from zero ($\sigma_u = 0.3$) |
 | Force Motion model | $(\mathbf{c}_j, \mathbf{v}_j, \mathbf{c}_{j+1}, m)$ | Near-equality enforcing the Euler step ($\sigma_\text{mm} = 10^{-4}$) |
