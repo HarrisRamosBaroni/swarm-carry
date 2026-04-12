@@ -271,7 +271,8 @@ class ForceCentralisedControllerCVel(BaseController):
 
         self._sigma_r2r  = float(cfg.get("sigma_r2r",   0.05))
         self._sigma_pull_in  = float(cfg.get("sigma_pull_in",   0.3))
-        self._sigma_anc_robots = float(cfg.get("sigma_anc_robots",   2)) #TESTING
+        self._sigma_anc_robots = float(cfg.get("sigma_anc_robots",   2)) 
+        self._sigma_mass = float(cfg.get("sigma_mass",   1.0)) #TESTING
 
 
         # Formation offsets r_i = [dx, dy] from centroid to robot i (world frame).
@@ -293,7 +294,7 @@ class ForceCentralisedControllerCVel(BaseController):
         self._noise_r2r = gtsam.noiseModel.Diagonal.Sigmas(np.full(1, self._sigma_r2r)) #only 1D num bc distance
         self._noise_pull_in = gtsam.noiseModel.Diagonal.Sigmas(np.array([self._sigma_pull_in, self._sigma_pull_in])) #back to 2D #made 3D for simplification, but we don't care about angle (since very high uncertainty. only care about x and y)
         self._noise_anc_robots = gtsam.noiseModel.Diagonal.Sigmas(np.array([self._sigma_anc_robots, self._sigma_anc_robots, 9999])) 
-
+        self._noise_mass = gtsam.noiseModel.Diagonal.Sigmas(np.full(1, self._sigma_mass))
 
         self._robots_init_pos = self._r.copy() #intial position of robots 
 
@@ -329,8 +330,8 @@ class ForceCentralisedControllerCVel(BaseController):
 
         self._set_solve_time(time.perf_counter() - t0)
 
-        # print("Forces:", forces)
-        # print("mass estimate:",mass_estimate)
+        print("Forces:", forces)
+        print("mass estimate:",mass_estimate)
 
         return self._robot_velocities2(U_c_all), mass_estimate, centroid_velocity_estimate #TODO robot velocities x10 bc they are way too slow for some reason...
 
@@ -416,6 +417,9 @@ class ForceCentralisedControllerCVel(BaseController):
             graph.add(gtsam.CustomFactor(
                 noise_c, [kC], partial(_prior_error, ref[j].copy()))) 
             
+
+            
+            
  
             init.insert(kC, ref[j].copy())
 
@@ -436,6 +440,12 @@ class ForceCentralisedControllerCVel(BaseController):
                 
             #get cumulative forces:
             cum_forces = np.sum(forces, axis=0)
+
+            #mass proir using downwards facing forces
+            # print('forces * g:',cum_forces[2] / 9.81)
+
+            graph.add(gtsam.CustomFactor(
+                self._noise_mass, [Ma], partial(_prior_error, np.array([cum_forces[2] / 9.81])))) 
 
             #motion model factor
             # Motion model: C_{j+1} = C_j + dt * U_j

@@ -121,7 +121,7 @@ I've however copied them here for accessibility:
 
 - (linked to above TODO) implement centroid velocity as a factor graph node initialised a single time at the beginning and that keeps being used and re-estimated as a node
 
-- Remove real centroid position being fed in from Sim and estimate it instead (use factor graph) (note: get system to work correctly first, then we'll look into that)
+- Remove real centroid position being fed in from Sim and estimate it instead (use factor graph) 
 
 - add a high-cost factor in case forces are more than 4-5kg to avoid breaking loadcells ? (so long as we stay in simulation this one isn't really a problem)
 
