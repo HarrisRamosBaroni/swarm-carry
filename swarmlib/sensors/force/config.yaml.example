@@ -1,0 +1,13 @@
+# Load cell calibration values
+# Copy this file to config.yaml and fill in your calibrated values.
+#
+# zeroOffset  - raw ADC reading with no load applied (from calculate_zero_offset / get_zero_offset)
+# calFactor   - counts per unit of weight (from calculate_calibration_factor / get_calibration_factor)
+
+horizontal:
+  zeroOffset: 0       # replace with value from calibration
+  calFactor: 1.0      # replace with value from calibration
+
+vertical:
+  zeroOffset: 0       # replace with value from calibration
+  calFactor: 1.0      # replace with value from calibration

@@ -1,34 +1,55 @@
 import time
+import yaml
 import qwiic_i2c
 from qwiic_nau7802 import QwiicNAU7802
 
-bus_id = 2
-print(qwiic_i2c._drivers)
-driver = qwiic_i2c.get_i2c_driver(iBus=bus_id)
-print(driver)
-print(driver.scan())
 
-scale = QwiicNAU7802(i2c_driver=driver)
-try:
-    if scale.is_connected() == False:
-        print("Not connected")
-    print("12a", scale.is_connected())
-    print("123a", scale._i2c.isDeviceConnected(0x2a))
+def load_config(path="config.yaml"):
+    with open(path, "r") as f:
+        return yaml.safe_load(f)
 
-    print(scale.begin())
-    if False:
-        pass
-#    if not scale.begin():
-#        print("NAU7802 init failed")
-    else:
-#        tare = scale.get_average(samples=10, timeout_ms=2000)
-#        scale.set_zero_offset(tare)
-        scale.set_calibration_factor(1.0)  # counts per unit (adjust)
 
+def init_scale(bus_id, zero_offset, cal_factor):
+    driver = qwiic_i2c.get_i2c_driver(iBus=bus_id)
+    scale = QwiicNAU7802(i2c_driver=driver)
+    if not scale.is_connected():
+        raise RuntimeError(f"Scale on bus {bus_id} not connected")
+    scale.begin()
+    scale.set_zero_offset(zero_offset)
+    scale.set_calibration_factor(cal_factor)
+    return scale
+
+
+def main():
+    config = load_config("config.yaml")
+
+    h_cfg = config["horizontal"]
+    v_cfg = config["vertical"]
+
+    print("Initialising horizontal load cell (bus 3)...")
+    h_scale = init_scale(
+        bus_id=3,
+        zero_offset=h_cfg["zeroOffset"],
+        cal_factor=h_cfg["calFactor"],
+    )
+
+    print("Initialising vertical load cell (bus 2)...")
+    v_scale = init_scale(
+        bus_id=2,
+        zero_offset=v_cfg["zeroOffset"],
+        cal_factor=v_cfg["calFactor"],
+    )
+
+    print("Reading force data. Press Ctrl+C to stop.\n")
+    try:
         while True:
-#            w = scale.get_weight(allow_negative=True, samples=1, timeout_ms=500)
-            w = scale.get_reading()
-            print(f"Weight: {w:.3f}")
+            h_reading = h_scale.get_weight(allow_negative=True, samples=1, timeout_ms=500)
+            v_reading = v_scale.get_weight(allow_negative=True, samples=1, timeout_ms=500)
+            print(f"Horizontal: {h_reading:.3f}  |  Vertical: {v_reading:.3f}")
             time.sleep(0.5)
-except KeyboardInterrupt:
-    print("Exiting...")
+    except KeyboardInterrupt:
+        print("\nExiting...")
+
+
+if __name__ == "__main__":
+    main()
