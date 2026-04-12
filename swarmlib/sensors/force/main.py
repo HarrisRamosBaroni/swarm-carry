@@ -2,6 +2,8 @@ import time
 import yaml
 import qwiic_i2c
 from qwiic_nau7802 import QwiicNAU7802
+import rospy
+from std_msgs.msg import Float32MultiArray
 
 
 def load_config(path="config.yaml"):
@@ -40,13 +42,22 @@ def main():
         cal_factor=v_cfg["calFactor"],
     )
 
+    rospy.init_node("force_sensor", anonymous=True)
+    pub = rospy.Publisher("/forces", Float32MultiArray, queue_size=10)
+    rate = rospy.Rate(2)  # 2 Hz to match 0.5s sleep
+
     print("Reading force data. Press Ctrl+C to stop.\n")
     try:
-        while True:
+        while not rospy.is_shutdown():
             h_reading = h_scale.get_weight()
             v_reading = v_scale.get_weight()
             print(f"Horizontal: {h_reading:.3f}  |  Vertical: {v_reading:.3f}")
-            time.sleep(0.5)
+
+            msg = Float32MultiArray()
+            msg.data = [h_reading, v_reading]
+            pub.publish(msg)
+
+            rate.sleep()
     except KeyboardInterrupt:
         print("\nExiting...")
 
