@@ -6,7 +6,7 @@ Real-robot deployment using ZeroMQ for cross-machine comms and ROS1 locally on e
 
 ## Prerequisites
 
-**Laptop** (Ubuntu 24.04): `pip install pyzmq msgpack pyyaml rclpy`
+**Laptop** (WSL/Ubuntu 24.04): `pip install pyzmq msgpack pyyaml`. And `pip install rclpy` unless you want to source package from ros2 install.
 
 **Each myAGV** (Ubuntu 18.04 / ROS1 Melodic):
 ```bash

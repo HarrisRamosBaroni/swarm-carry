@@ -53,4 +53,4 @@ python3 real_robot/robot/agent_runner.py \
 
 Expected: starts without crashing. Kill with Ctrl+C after a few seconds.
 
-> Note: this will fail if the laptop isn't reachable at the IP in network.yaml — that's fine for now, just check there's no Python import error.
+> Note: this will fail if the laptop isn't reachable at the IP in network.yaml. That's fine for now, just check there's no Python import error.
