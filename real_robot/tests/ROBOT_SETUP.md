@@ -41,16 +41,26 @@ python3 real_robot/tests/test_load_cells.py --config /home/ubuntu/force_config.y
 
 Expected: prints 5 readings near zero. Press on the carriage — values should change.
 
-## 5. Test agent runner (smoke test)
-
-With myagv_ros still running and network.yaml IP addresses filled in:
+## 5. Test ZMQ pub (robot only, no laptop needed)
 
 ```bash
-python3 real_robot/robot/agent_runner.py \
-    --config /home/ubuntu/network.yaml \
-    --id 0 --neighbors 1 --goal 5.0 0.0 0.0
+python3 real_robot/tests/test_zmq_pub.py --config /home/ubuntu/network.yaml --id 0
 ```
 
-Expected: starts without crashing. Kill with Ctrl+C after a few seconds.
+Expected: prints 3 published state messages and exits cleanly.
 
-> Note: this will fail if the laptop isn't reachable at the IP in network.yaml. That's fine for now, just check there's no Python import error.
+## 6. Test network (robot ↔ laptop)
+
+Make sure IPs in `network.yaml` are filled in on both sides first.
+
+**Laptop:**
+```bash
+python3 real_robot/tests/test_network_laptop.py --config real_robot/config/network.yaml --robot-id 0
+```
+
+**Then robot (once laptop is waiting):**
+```bash
+python3 real_robot/tests/test_network_robot.py --config /home/ubuntu/network.yaml --id 0
+```
+
+Expected: laptop prints a received state, robot prints a received cmd, both print PASS.
