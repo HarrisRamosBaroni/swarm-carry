@@ -40,11 +40,6 @@ Note: The obstacle avoidance factor from the original DRCap was removed for simp
 Per-robot velocity (holonomic rigid body): 
   defined by their respective control inputs
 
-  #TODO try changing centroid to no longer have control, instead velocity as factor
-#TODO add a high-cost factor in case forces are moer than 4-5kg to avoid breaking loadcells
-#TODO add a way to estimate forces while doing the MPC thing #currently just assuming cst
-#TODO implement mass as a 'global' node (currently more 'local')
-#TODO remember entire factor graph as opposed to creating a new one every time step
 #TODO make it decentralised
 #TODO Remove real centroid position being fed in and use factor graph node instead (note: get it to work with real measurement first)
 #TODO ROS
@@ -444,8 +439,9 @@ class ForceCentralisedControllerCVel(BaseController):
             #mass proir using downwards facing forces
             # print('forces * g:',cum_forces[2] / 9.81)
 
-            graph.add(gtsam.CustomFactor(
-                self._noise_mass, [Ma], partial(_prior_error, np.array([cum_forces[2] / 9.81])))) 
+            if (cum_forces[2] > 0.1): #remove simulation bug where forces are -200n or so
+                graph.add(gtsam.CustomFactor(
+                    self._noise_mass, [Ma], partial(_prior_error, np.array([cum_forces[2] / 9.81])))) 
 
             #motion model factor
             # Motion model: C_{j+1} = C_j + dt * U_j
