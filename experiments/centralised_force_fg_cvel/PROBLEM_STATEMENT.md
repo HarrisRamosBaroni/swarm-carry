@@ -110,21 +110,15 @@ Reported metrics per run:
 
 ## TODOs
 
-All TODOs should be written in the docstring at the top of the `force_centralised_controller.py` file (in `swarmlib/controllers/`).
+All TODOs should be written in the docstring at the top of the `force_centralised_controller_cel.py` file (in `swarmlib/controllers/`).
 
 I've however copied them here for accessibility:
 
 
-- add a way to estimate forces while doing the MPC thing (currently assuming constant): when building the factor graph for the N future states (MPC-like window), forces aren't correctly simulated, instead being modeled as constant (if cumulative forces are F=[1,0,0] at t=0, then F=[1,0,0] for t=1:N)
-- remember entire factor graph as opposed to creating a new one every time step: a factor graph is created every time step for generating the control inputs (receding horizon). However, when solved by the optimizer, that factor graph is deleted and a completely new one is created, using measurements from simulation (MoCap equivalents), instead of continuously adding to a large factor graph
 
-- (linked to above TODO) implement mass as a factor graph node initialised a single time at the beginning and that keeps being used and re-estimated as a node (currently mass is only a node that's estimated during the receding horizon, then its final value is passed to the next time step factor graph as an initial value, but that's not the right way of doing it)
+- Remove real centroid position being fed in from Sim and estimate it instead (use factor graph) => harris doing that
 
-- (linked to above TODO) implement centroid velocity as a factor graph node initialised a single time at the beginning and that keeps being used and re-estimated as a node
-
-- Remove real centroid position being fed in from Sim and estimate it instead (use factor graph) 
-
-- add a high-cost factor in case forces are more than 4-5kg to avoid breaking loadcells ? (so long as we stay in simulation this one isn't really a problem)
+- change load cells to return only vlaue they should be measurng (2 scalars, local frame)
 
 - make it decentralised
 - ROS implementation
