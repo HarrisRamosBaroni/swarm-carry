@@ -24,3 +24,4 @@ src/examples/
 **/log
 
 experiments/mrcap_fg/results.json
+swarmlib/sensors/force/config.yaml

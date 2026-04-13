@@ -257,11 +257,13 @@ class MecanumTransportEnv:
         return np.array([pos[0], pos[1], theta, vel[3], vel[4], vel[2]])
 
     def _read_robot_states(self) -> np.ndarray:
-        states = np.zeros((self.n_robots, 4))
+        states = np.zeros((self.n_robots, 5))
         for i, bid in enumerate(self._base_ids):
             pos = self.data.xpos[bid][:2]
+            qw, qx, qy, qz = self.data.xquat[bid]
+            theta = np.arctan2(2*(qw*qz + qx*qy), 1 - 2*(qy**2 + qz**2))
             vel = self.data.cvel[bid][3:5]
-            states[i] = [pos[0], pos[1], vel[0], vel[1]]
+            states[i] = [pos[0], pos[1], theta, vel[0], vel[1]]
         return states
 
     def _read_carriage_forces(self) -> Tuple[np.ndarray, np.ndarray]:
@@ -306,6 +308,7 @@ class MecanumTransportEnv:
         controls : (n, 2) [vx, vy] in m/s, world frame, per robot.
         """
         controls = np.asarray(controls, dtype=float)
+        print('controls send to env:',controls)
         if controls.shape != (self.n_robots, 2):
             raise ValueError(
                 f"controls must be ({self.n_robots}, 2), got {controls.shape}"
