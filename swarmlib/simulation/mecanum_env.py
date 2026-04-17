@@ -13,13 +13,15 @@ Always present:
   'robots'       : (n, 4) [x, y, vx, vy] per robot (world frame)
 
 Only when with_carriage=True:
-  'base_forces'  : (n,) scalar Fz per robot — vertical load, read at wall site (N)
-  'wall_forces'  : (n,) scalar Fx per robot — horizontal contact force, read at wall site (N)
+  'base_forces'  : (n,) scalar load per robot — vertical load cell reading (N)
+  'wall_forces'  : (n,) scalar load per robot — horizontal load cell reading (N)
 
-Both scalars come from the same wall-site force sensor. The base-site sensor is
-unused in sim: in the face-contact formation the base welds carry a huge
-statically-indeterminate preload that swamps the payload-weight signal. The wall
-site is less entangled in that preload loop and gives stable readings.
+Each scalar is the spring force of a 1-DOF load cell embedded in the carriage:
+the fork plate and fork wall are each attached to the robot chassis by a stiff
+slide joint with spring + damper (see generate_mecanum_scene.py). We read the
+joint displacement x and rate xdot, and return F = -(k·x + d·xdot). This breaks
+the rigid-rigid static indeterminacy of multi-robot face-contact formations and
+gives a physically meaningful per-robot load (+ve when loaded).
 """
 
 from __future__ import annotations
@@ -39,6 +41,7 @@ from swarmlib.simulation.generate_mecanum_scene import (
     generate_mecanum_scene,
     mecanum_side_push_formation,
     WHEEL_RADIUS, LX, LY, FORK_TOP_Z_WORLD,  # FORK_TOP_Z_WORLD used by carriage path
+    LOAD_CELL_STIFFNESS, LOAD_CELL_DAMPING, CONTACT_TIMECONST,
 )
 
 # Summit XL Steel mecanum inverse kinematics constants
@@ -109,6 +112,7 @@ class MecanumTransportEnv:
         vel_fb_kp: float = 2.0,
         vel_fb_ki: float = 5.0,
         vel_fb_integral_max: float = 2.0,
+        contact_timeconst: float = CONTACT_TIMECONST,
     ):
         self.n_robots = n_robots
         self._dt = dt_control
@@ -116,6 +120,7 @@ class MecanumTransportEnv:
         self._wheel_kv = wheel_kv
         self._with_carriage = with_carriage
         self._payload_density = payload_density
+        self._contact_timeconst = contact_timeconst
 
         # Per-robot velocity feedback (PI controller on world-frame vel error)
         self._vel_feedback = vel_feedback
@@ -166,6 +171,7 @@ class MecanumTransportEnv:
             payload_density=self._payload_density,
             goal=goal,
             with_carriage=self._with_carriage,
+            contact_timeconst=self._contact_timeconst,
             output_path=str(scene_path),
         )
         return scene_path
@@ -179,8 +185,13 @@ class MecanumTransportEnv:
         self._base_ids: List[int]              = []  # base_footprint body per robot
         self._wheel_act_ids: List[np.ndarray]  = []  # (4,) actuator ids per robot
         self._wheel_jnt_dofadr: List[np.ndarray] = []  # qvel addresses for 4 wheels
-        self._base_sensor_adr: List[int]       = []  # only populated with_carriage=True
-        self._wall_sensor_adr: List[int]       = []  # only populated with_carriage=True
+        # Load-cell sensor addresses in sensordata (jointpos + jointvel per axis)
+        self._base_pos_adr: List[int] = []   # populated only with_carriage=True
+        self._base_vel_adr: List[int] = []
+        self._wall_pos_adr: List[int] = []
+        self._wall_vel_adr: List[int] = []
+        self._load_k = LOAD_CELL_STIFFNESS
+        self._load_d = LOAD_CELL_DAMPING
 
         for i in range(self.n_robots):
             # Base body (for state reading)
@@ -211,8 +222,10 @@ class MecanumTransportEnv:
 
             if self._with_carriage:
                 for sensor_name, store in [
-                    (f"robot_{i}_base_force", self._base_sensor_adr),
-                    (f"robot_{i}_wall_force", self._wall_sensor_adr),
+                    (f"robot_{i}_base_pos", self._base_pos_adr),
+                    (f"robot_{i}_base_vel", self._base_vel_adr),
+                    (f"robot_{i}_wall_pos", self._wall_pos_adr),
+                    (f"robot_{i}_wall_vel", self._wall_vel_adr),
                 ]:
                     sid = mujoco.mj_name2id(
                         self.model, mujoco.mjtObj.mjOBJ_SENSOR, sensor_name
@@ -272,13 +285,21 @@ class MecanumTransportEnv:
         return states
 
     def _read_carriage_forces(self) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Read each load cell's spring force: F = -(k·x + d·xdot).
+        Sign convention: +ve when the plate/wall is loaded (payload pressing on it).
+        """
         base = np.zeros(self.n_robots)
         wall = np.zeros(self.n_robots)
         sd = self.data.sensordata
+        k, d = self._load_k, self._load_d
         for i in range(self.n_robots):
-            a = self._wall_sensor_adr[i]
-            wall[i] = sd[a]        # Fx — horizontal contact force on fork wall
-            base[i] = sd[a + 2]    # Fz at wall site — vertical load proxy (see class docstring)
+            x_b    = sd[self._base_pos_adr[i]]
+            xdot_b = sd[self._base_vel_adr[i]]
+            base[i] = -(k * x_b + d * xdot_b)
+            x_w    = sd[self._wall_pos_adr[i]]
+            xdot_w = sd[self._wall_vel_adr[i]]
+            wall[i] = -(k * x_w + d * xdot_w)
         return base, wall
 
     def _obs(self) -> dict:
@@ -312,7 +333,6 @@ class MecanumTransportEnv:
         controls : (n, 2) [vx, vy] in m/s, world frame, per robot.
         """
         controls = np.asarray(controls, dtype=float)
-        print('controls send to env:',controls)
         if controls.shape != (self.n_robots, 2):
             raise ValueError(
                 f"controls must be ({self.n_robots}, 2), got {controls.shape}"

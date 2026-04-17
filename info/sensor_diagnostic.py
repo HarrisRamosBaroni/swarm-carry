@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from swarmlib.simulation.mecanum_env import MecanumTransportEnv
 from swarmlib.simulation.generate_mecanum_scene import face_contact_formation
 
-N            = 3
+N            = 4
 PAYLOAD_MASS = 2.0
 HX, HY, HZ  = 0.30, 0.30, 0.12
 DT           = 0.05
@@ -32,10 +32,10 @@ env = MecanumTransportEnv(
 env.reset()
 
 G = 9.81
-tare = np.array([float(env.model.body(f'robot_{i}_fork_wall').mass) * G for i in range(N)])
+tare = np.array([float(env.model.body(f'robot_{i}_fork_base').mass) * G for i in range(N)])
 expected_N = PAYLOAD_MASS * G
 
-print(f"fork_wall masses: {tare/G} kg   tares: {tare} N   total tare: {tare.sum():.3f} N")
+print(f"fork_base masses: {tare/G} kg   tares: {tare} N   total tare: {tare.sum():.3f} N")
 print(f"Payload mass={PAYLOAD_MASS} kg  expected weight={expected_N:.2f} N\n")
 
 total = SETTLE_STEPS + DRIVE_STEPS

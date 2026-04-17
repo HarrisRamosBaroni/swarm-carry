@@ -56,6 +56,23 @@ FORK_TOP_Z_WORLD = -0.009 + 0.127 + _FB_POS_Z + _FB_TH   # ≈ 0.520 m
 # How far the fork wall outer face is forward of base_footprint origin in x
 _FORK_WALL_REACH = _FORK_FRONT_X + 2 * _FW_DH  # 0.40 m
 
+# Load-cell spring-damper parameters (both base and wall use the same values).
+# Each fork plate/wall is attached to the robot chassis via a 1-DOF slide joint
+# with a stiff linear spring + damper. We measure load as F = -(k·x + d·xdot):
+# this breaks the rigid-rigid static indeterminacy in face-contact formations
+# (see info/simulate_load_cells.md for motivation) and gives a physically
+# meaningful per-robot reading.
+#
+# Tuning: with m=0.1 kg, k=2e4 N/m, d=100 N·s/m →
+#   natural freq ω=447 rad/s (~71 Hz), slightly overdamped (ζ≈1.1),
+#   settle <10 ms, static compression at 20 N load ≈1 mm.
+LOAD_CELL_MASS      = 0.1       # kg — inertial mass of the sliding plate/wall
+LOAD_CELL_STIFFNESS = 2.0e4     # N/m
+LOAD_CELL_DAMPING   = 100.0     # N·s/m
+LOAD_CELL_RANGE     = 0.005     # m — half-range of slide joint travel
+CONTACT_TIMECONST   = 0.01      # s — solrefcontact time constant for fork geoms;
+                                 #   must satisfy tc < sqrt(m_eff / (15·k_spring))
+
 
 # ---------------------------------------------------------------------------
 # Formation helpers
@@ -139,17 +156,45 @@ def _prefix_tree(elem: ET.Element, prefix: str) -> None:
         _prefix_tree(child, prefix)
 
 
-def _make_fork_carriage(prefix: str) -> List[ET.Element]:
-    """Return [fork_base_body, fork_wall_body] ET elements for one robot."""
+def _make_fork_carriage(prefix: str, contact_timeconst: float = CONTACT_TIMECONST) -> List[ET.Element]:
+    """
+    Return [fork_base_body, fork_wall_body] ET elements for one robot.
+
+    Each body is attached to the robot chassis via a 1-DOF slide joint with a
+    stiff linear spring-damper, acting as a load cell:
+      - fork_base: slides along the robot's +Z (vertical), measures normal load
+      - fork_wall: slides along the robot's +X (forward),  measures push force
+    """
+    k = LOAD_CELL_STIFFNESS
+    d = LOAD_CELL_DAMPING
+    m = LOAD_CELL_MASS
+    r = LOAD_CELL_RANGE
+    I = 1.0e-4  # scalar inertia, same on each principal axis (small plate)
+
     fb = ET.Element('body', {
         'name': f'{prefix}fork_base',
         'pos':  f'{_FB_POS_X:.4f} 0 {_FB_POS_Z:.4f}',
+    })
+    ET.SubElement(fb, 'inertial', {
+        'pos': '0 0 0',
+        'mass': f'{m}',
+        'diaginertia': f'{I} {I} {I}',
+    })
+    ET.SubElement(fb, 'joint', {
+        'name': f'{prefix}fork_base_slide',
+        'type': 'slide',
+        'axis': '0 0 1',
+        'stiffness': f'{k}',
+        'damping':   f'{d}',
+        'limited': 'true',
+        'range': f'{-r} {r}',
     })
     ET.SubElement(fb, 'geom', {
         'type': 'box',
         'size': f'{_FB_LH:.4f} {_FB_WH:.4f} {_FB_TH:.4f}',
         'rgba': '0.75 0.75 0.75 1',
         'friction': '0.5 0.005 0.0001',
+        'solref': f'{contact_timeconst} 1',
     })
     ET.SubElement(fb, 'site', {
         'name': f'{prefix}base_site',
@@ -160,11 +205,26 @@ def _make_fork_carriage(prefix: str) -> List[ET.Element]:
         'name': f'{prefix}fork_wall',
         'pos':  f'{_FW_POS_X:.4f} 0 {_FW_POS_Z:.4f}',
     })
+    ET.SubElement(fw, 'inertial', {
+        'pos': '0 0 0',
+        'mass': f'{m}',
+        'diaginertia': f'{I} {I} {I}',
+    })
+    ET.SubElement(fw, 'joint', {
+        'name': f'{prefix}fork_wall_slide',
+        'type': 'slide',
+        'axis': '1 0 0',
+        'stiffness': f'{k}',
+        'damping':   f'{d}',
+        'limited': 'true',
+        'range': f'{-r} {r}',
+    })
     ET.SubElement(fw, 'geom', {
         'type': 'box',
         'size': f'{_FW_DH:.4f} {_FW_WH:.4f} {_FW_HH:.4f}',
         'rgba': '0.60 0.60 0.60 1',
         'friction': '0.5 0.005 0.0001',
+        'solref': f'{contact_timeconst} 1',
     })
     ET.SubElement(fw, 'site', {
         'name': f'{prefix}wall_site',
@@ -174,7 +234,8 @@ def _make_fork_carriage(prefix: str) -> List[ET.Element]:
 
 
 def _robot_body_xml(robot_id: int, rx: float, ry: float, yaw: float,
-                    with_carriage: bool = True) -> str:
+                    with_carriage: bool = True,
+                    contact_timeconst: float = CONTACT_TIMECONST) -> str:
     """
     Return the XML string for one prefixed Summit XL + optional carriage body,
     ready to paste inside <worldbody>.
@@ -203,7 +264,7 @@ def _robot_body_xml(robot_id: int, rx: float, ry: float, yaw: float,
                 break
         if base_body is None:
             raise RuntimeError(f"Could not find '{prefix}base' body in URDF XML")
-        for elem in _make_fork_carriage(prefix):
+        for elem in _make_fork_carriage(prefix, contact_timeconst=contact_timeconst):
             base_body.append(elem)
     # TODO: with_carriage=False — optionally add a force site on the robot front face
     #       (a <site> on the chassis geom + <force> sensor) for contact force sensing
@@ -226,14 +287,17 @@ def _actuator_xml_for_robot(robot_id: int) -> str:
 
 
 def _sensor_xml(n_robots: int) -> str:
+    """
+    Load-cell sensors: each fork plate/wall is on a slide joint with a spring,
+    so we read the joint displacement (jointpos) and rate (jointvel) and let
+    the env compute F = -(k·x + d·xdot). One load cell per axis per robot.
+    """
     lines = []
     for i in range(n_robots):
-        lines.append(
-            f'    <force name="robot_{i}_base_force" site="robot_{i}_base_site"/>'
-        )
-        lines.append(
-            f'    <force name="robot_{i}_wall_force" site="robot_{i}_wall_site"/>'
-        )
+        for axis in ("base", "wall"):
+            j = f"robot_{i}_fork_{axis}_slide"
+            lines.append(f'    <jointpos name="robot_{i}_{axis}_pos" joint="{j}"/>')
+            lines.append(f'    <jointvel name="robot_{i}_{axis}_vel" joint="{j}"/>')
     return '\n'.join(lines)
 
 
@@ -254,6 +318,7 @@ def generate_mecanum_scene(
     payload_density: Optional[float] = None,
     goal: Tuple[float, float, float] = (5.0, 0.0, 0.0),
     with_carriage: bool = True,
+    contact_timeconst: float = CONTACT_TIMECONST,
     output_path=None,
 ) -> str:
     """
@@ -315,7 +380,9 @@ def generate_mecanum_scene(
 
     # --- Build XML fragments ---
     robot_bodies_xml = '\n'.join(
-        _robot_body_xml(i, px + ox, py + oy, yaw, with_carriage=with_carriage)
+        _robot_body_xml(i, px + ox, py + oy, yaw,
+                        with_carriage=with_carriage,
+                        contact_timeconst=contact_timeconst)
         for i, (ox, oy, yaw) in enumerate(formation)
     )
     actuators_xml = '\n'.join(

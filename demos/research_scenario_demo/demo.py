@@ -35,8 +35,8 @@ from swarmlib.simulation.mecanum_env import MecanumTransportEnv
 from swarmlib.simulation.generate_mecanum_scene import face_contact_formation
 
 # Payload box half-sizes (m)
-PAYLOAD_HX = 0.30
-PAYLOAD_HY = 0.30
+PAYLOAD_HX = 0.60
+PAYLOAD_HY = 0.60
 PAYLOAD_HZ = 0.12
 
 
@@ -58,15 +58,14 @@ def run(n_robots, speed, duration, payload_mass, visualise):
     )
     obs = env.reset()
 
-    # Tare: MuJoCo's own mass for each fork_wall body × g.
-    # base_forces now read Fz at the wall site (see MecanumTransportEnv docstring),
-    # so the weld-constraint self-weight offset is fork_wall's mass, not fork_base's.
+    # Tare: the fork_base plate sits on its own load-cell spring, so at rest the
+    # spring reads its self-weight (≈0.1 kg × g ≈ 1 N per robot).
     G = 9.81
     tare_per_robot = np.array([
-        float(env.model.body(f'robot_{i}_fork_wall').mass) * G
+        float(env.model.body(f'robot_{i}_fork_base').mass) * G
         for i in range(n_robots)
     ])
-    print(f"  fork_wall mass: {tare_per_robot / G} kg  "
+    print(f"  fork_base mass: {tare_per_robot / G} kg  "
           f"tare: {tare_per_robot} N")
 
     settle_time = 2.0
