@@ -58,15 +58,15 @@ def run(n_robots, speed, duration, payload_mass, visualise):
     )
     obs = env.reset()
 
-    # Tare: MuJoCo's own mass for each fork_base body × g.
-    # The force sensor reports the constraint force at the fixed joint, which
-    # includes the fork base self-weight as well as payload contact force.
+    # Tare: MuJoCo's own mass for each fork_wall body × g.
+    # base_forces now read Fz at the wall site (see MecanumTransportEnv docstring),
+    # so the weld-constraint self-weight offset is fork_wall's mass, not fork_base's.
     G = 9.81
     tare_per_robot = np.array([
-        env.model.body(f'robot_{i}_fork_base').mass * G
+        float(env.model.body(f'robot_{i}_fork_wall').mass) * G
         for i in range(n_robots)
     ])
-    print(f"  fork_base mass: {tare_per_robot / G} kg  "
+    print(f"  fork_wall mass: {tare_per_robot / G} kg  "
           f"tare: {tare_per_robot} N")
 
     settle_time = 2.0
@@ -74,8 +74,8 @@ def run(n_robots, speed, duration, payload_mass, visualise):
 
     # Logging
     times = []
-    base_log = []   # (steps, n, 3)
-    wall_log = []   # (steps, n, 3)
+    base_log = []   # (steps, n)
+    wall_log = []   # (steps, n)
 
     viewer = None
     if visualise:
@@ -107,8 +107,8 @@ def run(n_robots, speed, duration, payload_mass, visualise):
 
         if t - last_report >= 0.5:
             payload = obs['payload']
-            base_fz = obs['base_forces'][:, 2]
-            wall_fx = obs['wall_forces'][:, 0]
+            base_fz = obs['base_forces']
+            wall_fx = obs['wall_forces']
             phase = "settle" if step < settle_steps else "drive "
             print(
                 f"[{phase}] t={t:5.1f}s  "
@@ -144,7 +144,7 @@ def plot_forces(times, base_log, wall_log, settle_time, n_robots, payload_mass,
     ax = axes[0]
     for i in range(n_robots):
         label = f"Robot {i} ({face_labels[round(i * 4 / n_robots) % 4]} face)"
-        ax.plot(times, base_log[:, i, 2] - tare_per_robot[i], label=label)
+        ax.plot(times, base_log[:, i] - tare_per_robot[i], label=label)
     ax.axhline(0, color='grey', ls=':', lw=0.8)
     ax.axvline(settle_time, color='grey', ls='--', lw=0.8, label='drive start')
     ax.set_ylabel("Tared base Fz (N)")
@@ -154,7 +154,7 @@ def plot_forces(times, base_log, wall_log, settle_time, n_robots, payload_mass,
 
     # Total base Fz: raw vs tared vs expected mg
     ax = axes[1]
-    total_fz = base_log[:, :, 2].sum(axis=1)
+    total_fz = base_log.sum(axis=1)
     tared_fz  = total_fz - total_tare
     ax.plot(times, total_fz,  color='tab:blue',   label=f'Raw total Fz (includes tare {total_tare:.1f} N)')
     ax.plot(times, tared_fz,  color='tab:orange', label='Tared total Fz')
@@ -170,7 +170,7 @@ def plot_forces(times, base_log, wall_log, settle_time, n_robots, payload_mass,
     ax = axes[2]
     for i in range(n_robots):
         label = f"Robot {i} ({face_labels[round(i * 4 / n_robots) % 4]} face)"
-        ax.plot(times, wall_log[:, i, 0], label=label)
+        ax.plot(times, wall_log[:, i], label=label)
     ax.axvline(settle_time, color='grey', ls='--', lw=0.8, label='drive start')
     ax.set_ylabel("Wall force  Fx (N)")
     ax.set_xlabel("Time (s)")

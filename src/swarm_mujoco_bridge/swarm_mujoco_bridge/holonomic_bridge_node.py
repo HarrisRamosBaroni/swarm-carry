@@ -155,15 +155,15 @@ class HolonomicBridgeNode(Node):
 
             # Backward-compat /force topic carries base force
             force_msg = Float64MultiArray()
-            force_msg.data = base_f.tolist()
+            force_msg.data = [float(base_f)]
             self._pub_force[i].publish(force_msg)
 
             base_msg = Float64MultiArray()
-            base_msg.data = base_f.tolist()
+            base_msg.data = [float(base_f)]
             self._pub_base_force[i].publish(base_msg)
 
             wall_msg = Float64MultiArray()
-            wall_msg.data = wall_f.tolist()
+            wall_msg.data = [float(wall_f)]
             self._pub_wall_force[i].publish(wall_msg)
 
 

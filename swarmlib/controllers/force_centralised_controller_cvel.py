@@ -307,25 +307,25 @@ class ForceCentralisedControllerCVel(BaseController):
         robot_states: np.ndarray, # [x, y, theta, vx, vy] for each robot
         goal_state: np.ndarray,
         dt: float,
-        forces: np.ndarray = None,
+        wall_forces: np.ndarray = None,
+        base_forces: np.ndarray = None,
         mass_estimate: float = None,
         centroid_velocity_estimate: float = None
     ) -> np.ndarray:
         centroid = payload_state[:3].copy()   # [x, y, theta]
         robots = robot_states[:,:3].copy() # [x, y, theta] for each robot
         # print('payload_state:', payload_state)
-        # print('robot_states:', robot_states) 
+        # print('robot_states:', robot_states)
 
         goal     = np.asarray(goal_state, dtype=float)[:3]
 
         t0 = time.perf_counter()
-        # U_c, mass_estimate = self._solve_fg(centroid, goal, dt, forces, mass_estimate)
         #TODO will only use robot pos from MoCap eventually
-        U_c_all, mass_estimate, centroid_velocity_estimate = self._solve_fg(centroid, robots, goal, dt, forces, mass_estimate ,centroid_velocity_estimate)
+        U_c_all, mass_estimate, centroid_velocity_estimate = self._solve_fg(centroid, robots, goal, dt, wall_forces, base_forces, mass_estimate, centroid_velocity_estimate)
 
         self._set_solve_time(time.perf_counter() - t0)
 
-        print("Forces:", forces)
+        print("Wall forces:", wall_forces, "  Base forces:", base_forces)
         print("mass estimate:",mass_estimate)
 
         return self._robot_velocities2(U_c_all), mass_estimate, centroid_velocity_estimate #TODO robot velocities x10 bc they are way too slow for some reason...
@@ -335,14 +335,27 @@ class ForceCentralisedControllerCVel(BaseController):
     # ------------------------------------------------------------------
 
     def _solve_fg(
-        self, centroid: np.ndarray, robots: np.ndarray, goal: np.ndarray, dt: float, 
-        forces: np.ndarray, mass_estimate: float, centroid_velocity_estimate: float
+        self, centroid: np.ndarray, robots: np.ndarray, goal: np.ndarray, dt: float,
+        wall_forces: np.ndarray, base_forces: np.ndarray,
+        mass_estimate: float, centroid_velocity_estimate: float
     ) -> np.ndarray:
         """Solve FG and return optimal centroid control [vx, vy, omega]."""
         N = self._N
 
         # Linear reference trajectory from current centroid to goal #5th factor hidden here
         ref = np.array([centroid + (j / N) * (goal - centroid) for j in range(N + 1)])
+
+        # Project each robot's wall-force scalar to world frame using its heading, then sum.
+        # wall_forces[i] is Fx in robot i's local frame (force pressing payload against wall).
+        F_world = np.zeros(3)
+        if wall_forces is not None:
+            for i in range(self.num_robots):
+                theta_i = robots[i, 2]
+                F_world[0] += wall_forces[i] * np.cos(theta_i)
+                F_world[1] += wall_forces[i] * np.sin(theta_i)
+
+        # Sum base (vertical) forces for mass estimation: sum(Fz_i) / g = payload mass
+        cum_base = float(np.sum(base_forces)) if base_forces is not None else 0.0
 
         graph = gtsam.NonlinearFactorGraph()
         init  = gtsam.Values()
@@ -433,21 +446,15 @@ class ForceCentralisedControllerCVel(BaseController):
 
                 init.insert(current_robot_control_nodes_fg[i], u_warm)
                 
-            #get cumulative forces:
-            cum_forces = np.sum(forces, axis=0)
-
-            #mass proir using downwards facing forces
-            # print('forces * g:',cum_forces[2] / 9.81)
-
-            if (cum_forces[2] > 0.1): #remove simulation bug where forces are -200n or so
+            #mass prior using downward-facing (base) forces: sum(Fz) / g = payload mass
+            if cum_base > 0.1:  # guard against simulation artefacts near zero
                 graph.add(gtsam.CustomFactor(
-                    self._noise_mass, [Ma], partial(_prior_error, np.array([cum_forces[2] / 9.81])))) 
+                    self._noise_mass, [Ma], partial(_prior_error, np.array([cum_base / 9.81]))))
 
-            #motion model factor
-            # Motion model: C_{j+1} = C_j + dt * U_j
+            #motion model factor with world-frame wall forces
             graph.add(gtsam.CustomFactor(
                 self._noise_mm, [kC, kV, kC1, Ma],
-                partial(_motion_force_model_error, dt, cum_forces)))
+                partial(_motion_force_model_error, dt, F_world)))
             
             #motion model for robots factor (for all robots)
             for i in range(self.num_robots):
@@ -502,7 +509,7 @@ class ForceCentralisedControllerCVel(BaseController):
         M_opt = result.atVector(M())
         Vcentroid_opt = result.atVector(Vk(0))
         # print('Vcentroid_opt', Vcentroid_opt)
-        Vcentroid_opt = Vcentroid_opt + cum_forces / M_opt * dt #next time step velocity of centroid
+        Vcentroid_opt = Vcentroid_opt + F_world / M_opt * dt #next time step velocity of centroid
         # print('Vcentroid_opt2', Vcentroid_opt)
 
 

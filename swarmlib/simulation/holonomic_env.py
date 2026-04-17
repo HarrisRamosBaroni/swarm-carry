@@ -10,10 +10,8 @@ Observation dict keys
 ---------------------
   'payload'      : (6,)   [x, y, theta, vx, vy, omega]
   'robots'       : (n, 4) [x, y, vx, vy] per robot
-  'base_forces'  : (n, 3) [fx, fy, fz] per robot, in fork-base site frame
-                   fz < 0 when payload weight presses down on the fork base
-  'wall_forces'  : (n, 3) [fx, fy, fz] per robot, in fork-wall site frame
-                   fx < 0 when payload presses against the fork wall
+  'base_forces'  : (n,) scalar Fz per robot — vertical load on fork base (N)
+  'wall_forces'  : (n,) scalar Fx per robot — horizontal contact force on fork wall (N)
 """
 
 from __future__ import annotations
@@ -177,22 +175,19 @@ class HolonomicTransportEnv:
 
     def _read_carriage_forces(self) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Returns (base_forces, wall_forces), each (n, 3) [fx, fy, fz] in site frame.
+        Returns (base_forces, wall_forces), each shape (n,).
 
-        base_forces[:,2] (fz) is the normal load on the fork base — positive when
-        the payload presses down (its weight distributed across n robots).
-
-        wall_forces[:,0] (fx) is the shear load on the fork wall — positive when
-        the payload presses against the wall (robot accelerating / other robots pushing).
+        base_forces[i] is the Fz scalar — vertical load on robot i's fork base.
+        wall_forces[i] is the Fx scalar — horizontal contact force on robot i's fork wall.
         """
-        base = np.zeros((self.n_robots, 3))
-        wall = np.zeros((self.n_robots, 3))
+        base = np.zeros(self.n_robots)
+        wall = np.zeros(self.n_robots)
         sd = self.data.sensordata
         for i in range(self.n_robots):
             a = self._base_sensor_adr[i]
-            base[i] = sd[a: a + 3]
+            base[i] = sd[a + 2]   # Fz — vertical load on fork base
             a = self._wall_sensor_adr[i]
-            wall[i] = sd[a: a + 3]
+            wall[i] = sd[a]        # Fx — horizontal contact force on fork wall
         return base, wall
 
     def _obs(self) -> dict:

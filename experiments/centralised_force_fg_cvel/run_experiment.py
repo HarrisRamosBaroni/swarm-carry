@@ -108,7 +108,8 @@ def run_single(
             break
         payload = obs["payload"]
         robots  = obs["robots"]
-        forces  = obs.get("wall_forces")
+        wall_forces = obs.get("wall_forces")
+        base_forces = obs.get("base_forces")
 
         payload_trajectory.append(payload[:3].tolist())
 
@@ -117,8 +118,9 @@ def run_single(
             robot_states=robots,
             goal_state=goal_arr,
             dt=0.05,
-            forces=forces,
-            mass_estimate=mass_estimate, 
+            wall_forces=wall_forces,
+            base_forces=base_forces,
+            mass_estimate=mass_estimate,
             centroid_velocity_estimate=centroid_velocity_estimtate
         )
         solve_times.append(controller.get_solve_time())

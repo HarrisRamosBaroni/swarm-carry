@@ -13,8 +13,13 @@ Always present:
   'robots'       : (n, 4) [x, y, vx, vy] per robot (world frame)
 
 Only when with_carriage=True:
-  'base_forces'  : (n, 3) [fx, fy, fz] per robot, in fork-base site frame
-  'wall_forces'  : (n, 3) [fx, fy, fz] per robot, in fork-wall site frame
+  'base_forces'  : (n,) scalar Fz per robot — vertical load, read at wall site (N)
+  'wall_forces'  : (n,) scalar Fx per robot — horizontal contact force, read at wall site (N)
+
+Both scalars come from the same wall-site force sensor. The base-site sensor is
+unused in sim: in the face-contact formation the base welds carry a huge
+statically-indeterminate preload that swamps the payload-weight signal. The wall
+site is less entangled in that preload loop and gives stable readings.
 """
 
 from __future__ import annotations
@@ -267,14 +272,13 @@ class MecanumTransportEnv:
         return states
 
     def _read_carriage_forces(self) -> Tuple[np.ndarray, np.ndarray]:
-        base = np.zeros((self.n_robots, 3))
-        wall = np.zeros((self.n_robots, 3))
+        base = np.zeros(self.n_robots)
+        wall = np.zeros(self.n_robots)
         sd = self.data.sensordata
         for i in range(self.n_robots):
-            a = self._base_sensor_adr[i]
-            base[i] = sd[a:a+3]
             a = self._wall_sensor_adr[i]
-            wall[i] = sd[a:a+3]
+            wall[i] = sd[a]        # Fx — horizontal contact force on fork wall
+            base[i] = sd[a + 2]    # Fz at wall site — vertical load proxy (see class docstring)
         return base, wall
 
     def _obs(self) -> dict:

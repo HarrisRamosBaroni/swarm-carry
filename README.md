@@ -95,7 +95,7 @@ obs = env.reset()
 
 for _ in range(500):
     # obs keys: 'payload' (6,), 'robots' (n,4),
-    #           'base_forces' (n,3), 'wall_forces' (n,3)
+    #           'base_forces' (n,) Fz scalar/robot, 'wall_forces' (n,) Fx scalar/robot
     controls = np.zeros((4, 2))   # [vx, vy] per robot, m/s world frame
     obs = env.step(controls)
 

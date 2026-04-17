@@ -104,8 +104,8 @@ def main():
             # Periodic console readout
             if t - last_report >= 0.5:
                 payload = obs['payload']
-                base_fz = obs['base_forces'][:, 2]
-                wall_fx = obs['wall_forces'][:, 0]
+                base_fz = obs['base_forces']
+                wall_fx = obs['wall_forces']
                 print(
                     f"t={t:5.1f}s  payload=({payload[0]:+.2f},{payload[1]:+.2f})m  "
                     f"base_fz={base_fz.mean():+6.1f}N  wall_fx={wall_fx.mean():+6.1f}N"

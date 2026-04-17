@@ -1,0 +1,225 @@
+# demos/research_scenario_demo/demo.py 
+demos/research_scenario_demo/demo.py has identical results before and after changes (identical plots)
+
+identical demos/research_scenario_demo/demo.py before and after suggests base_forces, wall_forces are indexed right, though i noticed that forces are negative in many places, eg wall force fx plot shows equal and opposite forces for robot 0 and robot 1 in --n-robots 2 case.
+
+--n-robots 3 case before and after show base force of robot 0 around +1000, and both robots 1 and 2 around -500 (plots mostly overlap throughout 10 second simulated duration of test). Total Fz plot shows tared total line roughly hovering around expected 19.8N, with some high spikes, and about 4 times it dipped slightly negative.
+
+# experiments/centralised_force_fg_cvel/run_experiment.py
+git stash apply
+On branch main
+Your branch is up-to-date with 'origin/main'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   ../../.gitignore
+	modified:   ../../README.md
+	modified:   ../../demos/holonomic_carriage_demo/demo.py
+	modified:   ../../demos/research_scenario_demo/demo.py
+	modified:   run_experiment.py
+	modified:   ../../src/swarm_mujoco_bridge/swarm_mujoco_bridge/holonomic_bridge_node.py
+	modified:   ../../swarmlib/controllers/force_centralised_controller_cvel.py
+	modified:   ../../swarmlib/simulation/holonomic_env.py
+	modified:   ../../swarmlib/simulation/mecanum_env.py
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	../com_estimation/
+
+no changes added to commit (use "git add" and/or "git commit -a")
+/home/harris/Documents/y3/dot/mj-venv/bin/python run_experiment.py --max-time 5 --n-values 3 --vis --sim-speed 1.0
+
+============================================================
+MR.CAP Factor-Graph Scaling Experiment
+  robots:       [3]
+  distance:     5.0 m
+  horizon:      15
+  v_max:        0.25 m/s
+  payload_mass: 2.0 kg
+============================================================
+
+Running n=3 ...
+/home/harris/Documents/y3/dot/mj-venv/lib/python3.12/site-packages/glfw/__init__.py:917: GLFWError: (65548) b'Wayland: The platform does not provide the window position'
+  warnings.warn(message, GLFWError)
+  Viewer open — adjust camera, then press Enter to start...
+Wall forces: [-4.75582577  2.27186361  2.27186361]   Base forces: [14.65920989 -2.18122325 -2.18122325]
+mass estimate: [1.0496191]
+controls send to env: [[ 0.24435366 -0.05283263]
+ [ 0.24435366 -0.05283263]
+ [ 0.24435366 -0.05283264]]
+Wall forces: [ 20.71122145   5.05330621 -45.30174814]   Base forces: [ 3.99978924e+03 -3.99036984e+00 -3.89990191e+03]
+mass estimate: [9.77542931]
+controls send to env: [[ 0.21151658 -0.13326941]
+ [ 0.21151658 -0.13326941]
+ [ 0.21151658 -0.13326941]]
+Wall forces: [0.23243086 0.96898576 0.42730786]   Base forces: [1099.30470511 -465.13075064 -586.99677848]
+mass estimate: [4.80909032]
+controls send to env: [[ 0.19086387 -0.16146511]
+ [ 0.19086387 -0.16146511]
+ [ 0.19086387 -0.16146512]]
+Wall forces: [-0.07894372 33.27169143 -0.81232179]   Base forces: [ 827.66181661 -236.09522024 -535.11255227]
+mass estimate: [5.75474456]
+controls send to env: [[ 0.1767767  -0.17677669]
+ [ 0.1767767  -0.17677669]
+ [ 0.17677669 -0.1767767 ]]
+Wall forces: [  4.26085153 100.98953987 115.89511177]   Base forces: [ 632.14682211 -612.05401415   -3.48885015]
+mass estimate: [1.69255431]
+controls send to env: [[ 0.1767767  -0.17677669]
+ [ 0.1767767  -0.17677669]
+ [ 0.17677669 -0.1767767 ]]
+Wall forces: [-0.42729547  0.74144916 -0.02685151]   Base forces: [1057.38646488 -482.7920798  -513.83545393]
+mass estimate: [6.19357096]
+controls send to env: [[ 0.1767767  -0.17677669]
+ [ 0.1767767  -0.17677669]
+ [ 0.17677669 -0.1767767 ]]
+Wall forces: [ -5.40988989 123.18518781 111.90745035]   Base forces: [18.64498036 -2.58408513 -0.47545748]
+mass estimate: [1.58872964]
+controls send to env: [[ 0.1767767  -0.17677669]
+ [ 0.1767767  -0.17677669]
+ [ 0.17677669 -0.1767767 ]]
+...
+Wall forces: [-1.73680350e-03  2.24169964e+02  2.93641197e+02]   Base forces: [1017.81045196 -531.89743884 -292.62059626]
+mass estimate: [19.70361028]
+controls send to env: [[ 0.24859045 -0.02651014]
+ [ 0.24859045 -0.02651014]
+ [ 0.24859045 -0.02651014]]
+Wall forces: [0.44135434 6.1213492  0.37047903]   Base forces: [ 667.72292367   -4.0678514  -628.98562709]
+mass estimate: [3.53409227]
+controls send to env: [[ 0.24999346 -0.00180822]
+ [ 0.24999346 -0.00180822]
+ [ 0.24999346 -0.00180822]]
+Wall forces: [ 0.54492569 -0.23403307 14.57253563]   Base forces: [ 888.37074373 -508.93909091 -334.03864372]
+mass estimate: [4.62721805]
+controls send to env: [[0.2499175  0.00642214]
+ [0.2499175  0.00642214]
+ [0.2499175  0.00642214]]
+****************************************
+time taken : 9.810118198394775
+****************************************
+  [TIMEOUT]  payload=2.0 kg  final_error=3.809 m  deviation=0.077 m  solve=20.3 ± 4.0 ms  sat=87.0%  peak=2404.6 Nm  steps=100
+
+===========================================================================
+   n    status  final_err(m)  deviation(m)  solve_mean(ms)    sat%   peak(Nm)
+----  --------  ------------  ------------  --------------  ------  ---------
+   3   TIMEOUT         3.809         0.077           20.34    87.0    2404.56
+============================================================
+
+Results saved to /home/harris/Documents/y3/dot/swarm-carry/experiments/centralised_force_fg_cvel/results.json
+git stash
+Saved working directory and index state WIP on main: a7f8c93 feat: update setup tests with laptop-robot message test
+/home/harris/Documents/y3/dot/mj-venv/bin/python run_experiment.py --max-time 5 --n-values 3 --vis --sim-speed 1.0
+
+============================================================
+MR.CAP Factor-Graph Scaling Experiment
+  robots:       [3]
+  distance:     5.0 m
+  horizon:      15
+  v_max:        0.25 m/s
+  payload_mass: 2.0 kg
+============================================================
+
+Running n=3 ...
+/home/harris/Documents/y3/dot/mj-venv/lib/python3.12/site-packages/glfw/__init__.py:917: GLFWError: (65548) b'Wayland: The platform does not provide the window position'
+  warnings.warn(message, GLFWError)
+  Viewer open — adjust camera, then press Enter to start...
+Forces: [[-4.75582577e+00  5.26765880e-14  6.98858612e+00]
+ [ 2.27186361e+00 -5.27028976e+00 -7.40039091e-01]
+ [ 2.27186361e+00  5.27028976e+00 -7.40039091e-01]]
+mass estimate: [0.56151967]
+controls send to env: [[ 0.24435366 -0.05283263]
+ [ 0.24435366 -0.05283263]
+ [ 0.24435366 -0.05283264]]
+Forces: [[ 20.71122145   3.87968747  -1.71568538]
+ [  5.05330621  -1.08620527  -1.25215033]
+ [-45.30174814  13.70148671  67.11015182]]
+mass estimate: [6.5384624]
+controls send to env: [[ 0.21151658 -0.13326941]
+ [ 0.21151658 -0.13326941]
+ [ 0.21151658 -0.13326941]]
+Forces: [[ 0.23243086 -0.46273519  6.16754669]
+ [ 0.96898576  0.47743444  5.50989195]
+ [ 0.42730786  0.58673352  5.77338853]]
+mass estimate: [1.77888146]
+controls send to env: [[ 0.19086387 -0.16146511]
+ [ 0.19086387 -0.16146511]
+ [ 0.19086387 -0.16146512]]
+Forces: [[-0.07894372 -0.82165043  6.53717201]
+ [33.27169143 -4.01076503  4.61645128]
+ [-0.81232179  0.30267146  6.54443661]]
+mass estimate: [1.80408358]
+controls send to env: [[ 0.1767767  -0.17677669]
+ [ 0.1767767  -0.17677669]
+ [ 0.17677669 -0.1767767 ]]
+...
+Forces: [[-0.02013497 -0.01136775  6.15359209]
+ [ 0.35096602  0.16784772  6.09607707]
+ [-0.88599229  0.78211677  7.6646491 ]]
+mass estimate: [2.03000186]
+controls send to env: [[ 0.24999943 -0.00053315]
+ [ 0.24999943 -0.00053315]
+ [ 0.24999943 -0.00053315]]
+Forces: [[-0.20108857 -0.34357533  6.16250544]
+ [75.52111218 -2.2532996  14.26149506]
+ [72.11958992  9.54732332  5.43902339]]
+mass estimate: [2.63639387]
+controls send to env: [[ 0.24996185 -0.00436704]
+ [ 0.24996185 -0.00436705]
+ [ 0.24996185 -0.00436705]]
+Forces: [[-0.7106711   0.67521171  6.21271713]
+ [ 0.65965184  0.19334199  5.4172924 ]
+ [-0.49746942  5.28605946 10.64742174]]
+mass estimate: [2.27089004]
+controls send to env: [[ 0.24999843 -0.00088523]
+ [ 0.24999843 -0.00088523]
+ [ 0.24999843 -0.00088523]]
+****************************************
+time taken : 9.027355194091797
+****************************************
+  [TIMEOUT]  payload=2.0 kg  final_error=3.808 m  deviation=0.085 m  solve=21.8 ± 5.4 ms  sat=87.0%  peak=2404.6 Nm  steps=100
+
+===========================================================================
+   n    status  final_err(m)  deviation(m)  solve_mean(ms)    sat%   peak(Nm)
+----  --------  ------------  ------------  --------------  ------  ---------
+   3   TIMEOUT         3.808         0.085           21.80    87.0    2404.56
+============================================================
+
+Results saved to /home/harris/Documents/y3/dot/swarm-carry/experiments/centralised_force_fg_cvel/results.json
+git status
+On branch main
+Your branch is up-to-date with 'origin/main'.
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	results.json
+	../com_estimation/
+
+nothing added to commit but untracked files present (use "git add" to track)
+git stash pop
+On branch main
+Your branch is up-to-date with 'origin/main'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   ../../.gitignore
+	modified:   ../../README.md
+	modified:   ../../demos/holonomic_carriage_demo/demo.py
+	modified:   ../../demos/research_scenario_demo/demo.py
+	modified:   run_experiment.py
+	modified:   ../../src/swarm_mujoco_bridge/swarm_mujoco_bridge/holonomic_bridge_node.py
+	modified:   ../../swarmlib/controllers/force_centralised_controller_cvel.py
+	modified:   ../../swarmlib/simulation/holonomic_env.py
+	modified:   ../../swarmlib/simulation/mecanum_env.py
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	../com_estimation/
+
+no changes added to commit (use "git add" and/or "git commit -a")
+Dropped refs/stash@{0} (61f9da00c329aa5f4e2f0076ff288b1d9f3bfd98)
+
+
+
+--payload-mass is set to 2.0 by default
+i noticed that mass estimates currently are less stable and inaccurate in current so is that just the factor graph being bad or force sensing issue? and also, the wall forces are an order of magnitude higher seemingly in hundreds of newtons currently compared to previous where all are within 10^0 or 10^1 and mass estimates closer to 2.0 . so i unless the different control commands are somehow all pushing on the payload down onto the other's sensor due to new controller behaving slightly differently then i don't see why mere indexing to extract base forces from the unified "forces" from earlier should be different in magnitude like there are no other transforms in between them. well, indexing should be fine according to demos/research_scenario_demo/demo.py 
