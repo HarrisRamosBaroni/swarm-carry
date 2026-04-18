@@ -13,14 +13,19 @@ Always present:
   'robots'       : (n, 5) [x, y, theta, vx, vy] per robot (world frame)
 
 Only when with_carriage=True:
-  'base_forces'  : (n,) payload contact force per robot on fork_base (N, +ve when loaded).
-                   Fork-plate self-weight already subtracted; no taring by the caller.
-  'wall_forces'  : (n,) horizontal contact force on fork_wall (N, signed along robot x-axis).
+  'base_forces'  : (n,) normal contact force between fork_base and payload (N, ≥0).
+                   Sum equals payload weight; no taring required.
+  'wall_forces'  : (n,) normal contact force between fork_wall and payload (N, ≥0).
 
-Each fork body has a soft slide joint (spring k, damper d) that breaks the
-rigid-rigid static indeterminacy of multi-robot face-contact formations.  Force
-is computed as F = -(k·q + d·q̇) from data.qpos/qvel, with the plate self-weight
-removed internally so base_forces == payload contact force directly.
+Fork bodies have soft slide joints (spring k, damper d) that break rigid-rigid
+static indeterminacy so each robot gets a unique, physically meaningful share of
+the load.  Forces are read via mj_contactForce() — the constraint solver output —
+rather than from spring displacement, so readings are independent of k and are
+unaffected by joint range limits.
+
+Fork geoms use contype=2 / conaffinity=1 so they collide with the payload
+(contype=1) but not with each other, preventing spurious inter-robot contacts
+when robots are close.
 """
 
 from __future__ import annotations
@@ -40,7 +45,6 @@ from swarmlib.simulation.generate_mecanum_scene import (
     generate_mecanum_scene,
     mecanum_side_push_formation,
     WHEEL_RADIUS, LX, LY, FORK_TOP_Z_WORLD,
-    LOAD_CELL_STIFFNESS, LOAD_CELL_DAMPING,
     CONTACT_TIMECONST,
 )
 
@@ -185,14 +189,9 @@ class MecanumTransportEnv:
         self._base_ids: List[int]              = []  # base_footprint body per robot
         self._wheel_act_ids: List[np.ndarray]  = []  # (4,) actuator ids per robot
         self._wheel_jnt_dofadr: List[np.ndarray] = []  # qvel addresses for 4 wheels
-        # Load-cell: qpos/qvel addresses for fork slide joints + per-robot tare
-        self._fork_base_qposadr: List[int]     = []
-        self._fork_base_dofadr:  List[int]     = []
-        self._fork_wall_qposadr: List[int]     = []
-        self._fork_wall_dofadr:  List[int]     = []
-        self._fork_tare: List[float]           = []  # plate weight (N) per robot
-        self._load_k = LOAD_CELL_STIFFNESS
-        self._load_d = LOAD_CELL_DAMPING
+        # Load-cell: body IDs for fork_base and fork_wall per robot
+        self._fork_base_body_ids: List[int]    = []
+        self._fork_wall_body_ids: List[int]    = []
 
         for i in range(self.n_robots):
             # Base body (for state reading)
@@ -222,19 +221,14 @@ class MecanumTransportEnv:
             self._wheel_jnt_dofadr.append(np.array(dof_addrs, dtype=int))
 
             if self._with_carriage:
-                for jname, qlist, dlist in [
-                    (f"robot_{i}_fork_base_slide",
-                     self._fork_base_qposadr, self._fork_base_dofadr),
-                    (f"robot_{i}_fork_wall_slide",
-                     self._fork_wall_qposadr, self._fork_wall_dofadr),
-                ]:
-                    jid = mujoco.mj_name2id(
-                        self.model, mujoco.mjtObj.mjOBJ_JOINT, jname
-                    )
-                    qlist.append(int(self.model.jnt_qposadr[jid]))
-                    dlist.append(int(self.model.jnt_dofadr[jid]))
-                plate_mass = float(self.model.body(f"robot_{i}_fork_base").mass)
-                self._fork_tare.append(plate_mass * 9.81)
+                fb_id = mujoco.mj_name2id(
+                    self.model, mujoco.mjtObj.mjOBJ_BODY, f"robot_{i}_fork_base"
+                )
+                fw_id = mujoco.mj_name2id(
+                    self.model, mujoco.mjtObj.mjOBJ_BODY, f"robot_{i}_fork_wall"
+                )
+                self._fork_base_body_ids.append(fb_id)
+                self._fork_wall_body_ids.append(fw_id)
 
     # ------------------------------------------------------------------
     # Control helpers
@@ -290,20 +284,27 @@ class MecanumTransportEnv:
 
     def _read_carriage_forces(self) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Spring-displacement force: F = -(k·q + d·q̇) from qpos/qvel.
-        Plate self-weight subtracted from base so callers see payload contact force.
-        Wall is signed along robot x-axis (no gravity term for horizontal joint).
+        Read fork forces by summing mj_contactForce() over all contacts between
+        each fork body and the payload.  result[0] is the normal force (always ≥0).
         """
         base = np.zeros(self.n_robots)
         wall = np.zeros(self.n_robots)
-        k, d = self._load_k, self._load_d
-        for i in range(self.n_robots):
-            q_b  = self.data.qpos[self._fork_base_qposadr[i]]
-            qd_b = self.data.qvel[self._fork_base_dofadr[i]]
-            base[i] = -(k * q_b + d * qd_b) - self._fork_tare[i]
-            q_w  = self.data.qpos[self._fork_wall_qposadr[i]]
-            qd_w = self.data.qvel[self._fork_wall_dofadr[i]]
-            wall[i] = -(k * q_w + d * qd_w)
+        _result = np.zeros(6)
+        for c_id in range(self.data.ncon):
+            c = self.data.contact[c_id]
+            b1 = int(self.model.geom_bodyid[c.geom1])
+            b2 = int(self.model.geom_bodyid[c.geom2])
+            if b1 != self._payload_id and b2 != self._payload_id:
+                continue
+            mujoco.mj_contactForce(self.model, self.data, c_id, _result)
+            f = _result[0]
+            for i in range(self.n_robots):
+                if b1 == self._fork_base_body_ids[i] or b2 == self._fork_base_body_ids[i]:
+                    base[i] += f
+                    break
+                if b1 == self._fork_wall_body_ids[i] or b2 == self._fork_wall_body_ids[i]:
+                    wall[i] += f
+                    break
         return base, wall
 
     def _obs(self) -> dict:

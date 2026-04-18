@@ -195,6 +195,8 @@ def _make_fork_carriage(prefix: str, contact_timeconst: float = CONTACT_TIMECONS
         'rgba': '0.75 0.75 0.75 1',
         'friction': '0.5 0.005 0.0001',
         'solref': f'{contact_timeconst} 1',
+        'contype': '2',
+        'conaffinity': '1',
     })
     ET.SubElement(fb, 'site', {
         'name': f'{prefix}base_site',
@@ -225,6 +227,8 @@ def _make_fork_carriage(prefix: str, contact_timeconst: float = CONTACT_TIMECONS
         'rgba': '0.60 0.60 0.60 1',
         'friction': '0.5 0.005 0.0001',
         'solref': f'{contact_timeconst} 1',
+        'contype': '2',
+        'conaffinity': '1',
     })
     ET.SubElement(fw, 'site', {
         'name': f'{prefix}wall_site',

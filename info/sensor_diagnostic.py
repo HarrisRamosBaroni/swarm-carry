@@ -21,7 +21,7 @@ args = parser.parse_args()
 
 N            = 4
 PAYLOAD_MASS = args.payload_mass
-HX, HY, HZ  = 0.30, 0.30, 0.12
+HX, HY, HZ  = 0.60, 0.60, 0.12
 DT           = 0.05
 SETTLE_STEPS = 40
 DRIVE_STEPS  = 60
