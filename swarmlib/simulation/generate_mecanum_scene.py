@@ -67,11 +67,11 @@ _FORK_WALL_REACH = _FORK_FRONT_X + 2 * _FW_DH  # 0.40 m
 #   natural freq ω=447 rad/s (~71 Hz), slightly overdamped (ζ≈1.1),
 #   settle <10 ms, static compression at 20 N load ≈1 mm.
 LOAD_CELL_MASS      = 0.1       # kg — inertial mass of the sliding plate/wall
-LOAD_CELL_STIFFNESS = 2.0e4     # N/m
-LOAD_CELL_DAMPING   = 100.0     # N·s/m
-LOAD_CELL_RANGE     = 0.005     # m — half-range of slide joint travel
-CONTACT_TIMECONST   = 0.01      # s — solrefcontact time constant for fork geoms;
-                                 #   must satisfy tc < sqrt(m_eff / (15·k_spring))
+LOAD_CELL_STIFFNESS = 500.0     # N/m — soft spring; only breaks rigid-rigid indeterminacy,
+                                 #   NOT used for force measurement (env reads cfrc_ext)
+LOAD_CELL_DAMPING   = 40.0      # N·s/m — ζ≈1.15 relative to m_eff=0.6 kg
+LOAD_CELL_RANGE     = 0.025     # m — half-range; equilibrium at ~12 mm, well within range
+CONTACT_TIMECONST   = 0.01      # s — solref time constant for fork geoms
 
 
 # ---------------------------------------------------------------------------
@@ -287,18 +287,8 @@ def _actuator_xml_for_robot(robot_id: int) -> str:
 
 
 def _sensor_xml(n_robots: int) -> str:
-    """
-    Load-cell sensors: each fork plate/wall is on a slide joint with a spring,
-    so we read the joint displacement (jointpos) and rate (jointvel) and let
-    the env compute F = -(k·x + d·xdot). One load cell per axis per robot.
-    """
-    lines = []
-    for i in range(n_robots):
-        for axis in ("base", "wall"):
-            j = f"robot_{i}_fork_{axis}_slide"
-            lines.append(f'    <jointpos name="robot_{i}_{axis}_pos" joint="{j}"/>')
-            lines.append(f'    <jointvel name="robot_{i}_{axis}_vel" joint="{j}"/>')
-    return '\n'.join(lines)
+    # Forces read directly from data.cfrc_ext in the env; no position sensors needed.
+    return '    <!-- forces read via data.cfrc_ext; no sensors required -->'
 
 
 def _no_sensor_xml() -> str:

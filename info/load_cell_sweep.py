@@ -91,14 +91,10 @@ for k in K_VALUES:
             env._load_d = d
             env.reset()
 
-            tare = np.array([
-                float(env.model.body(f'robot_{i}_fork_base').mass) * G
-                for i in range(N)
-            ])
             mass_samples = np.zeros(SETTLE_STEPS)
             for step in range(SETTLE_STEPS):
                 obs = env.step(np.zeros((N, 2)))
-                mass_samples[step] = (obs['base_forces'] - tare).sum() / G
+                mass_samples[step] = obs['base_forces'].sum() / G
             env.close()
 
         except Exception as exc:
