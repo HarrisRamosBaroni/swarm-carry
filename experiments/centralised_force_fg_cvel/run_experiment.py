@@ -30,8 +30,8 @@ from swarmlib.controllers import ForceCentralisedControllerCVel
 # ---------------------------------------------------------------------------
 # Payload geometry (box half-sizes) — shared between formation and env
 # ---------------------------------------------------------------------------
-PAYLOAD_HX = 0.30   # m
-PAYLOAD_HY = 0.30   # m
+PAYLOAD_HX = 0.450   # m
+PAYLOAD_HY = 0.450   # m
 PAYLOAD_HZ = 0.12   # m
 
 
