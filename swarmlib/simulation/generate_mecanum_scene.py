@@ -54,7 +54,8 @@ _FW_POS_Z = _FB_POS_Z + _FW_HH        # 0.432
 FORK_TOP_Z_WORLD = -0.009 + 0.127 + _FB_POS_Z + _FB_TH   # ≈ 0.520 m
 
 # How far the fork wall outer face is forward of base_footprint origin in x
-_FORK_WALL_REACH = _FORK_FRONT_X + 2 * _FW_DH  # 0.40 m
+# = body centre (_FW_POS_X) + half-depth (_FW_DH)
+_FORK_WALL_REACH = _FW_POS_X + _FW_DH  # 0.39 m
 
 # Load-cell spring-damper parameters (both base and wall use the same values).
 # Each fork plate/wall is attached to the robot chassis via a 1-DOF slide joint
