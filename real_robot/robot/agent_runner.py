@@ -22,16 +22,26 @@ from real_robot.transport.messages import state_msg, force_msg, unpack
 from real_robot.robot.ros1_bridge import ROS1Bridge
 from real_robot.robot.load_cell_reader import LoadCellReader
 from swarmlib.communication.zmq_backend import ZeroMQSingleAgentBackend
+from swarmlib.controllers import DRCapDistributedController
+from swarmlib.simulation.generate_mecanum_scene import face_contact_formation
 
 
 class AgentRunner:
     def __init__(self, robot_id: int, neighbor_ids: list,
                  network_config: dict, goal: np.ndarray,
-                 control_hz: float = 20.0):
+                 n_robots: int,
+                 payload_hx: float = 0.45,
+                 payload_hy: float = 0.45,
+                 control_hz: float = 20.0,
+                 gbp_async: bool = False,
+                 gbp_max_iters: int = 30,
+                 horizon: int = 15,
+                 v_max: float = 0.25):
         self._id = robot_id
         self._neighbors = neighbor_ids
         self._goal = goal
         self._dt = 1.0 / control_hz
+        self._n_robots = n_robots
 
         cfg = network_config
         ctx = zmq.Context.instance()
@@ -56,11 +66,14 @@ class AgentRunner:
             self._sub.setsockopt_string(zmq.SUBSCRIBE, "state")
             self._sub.setsockopt_string(zmq.SUBSCRIBE, "force")
 
-        # GBP / distributed algorithm peer comms
+        # GBP / distributed algorithm peer comms. synchronous=False matches
+        # the paper's asynchronous GBP scheme: each agent uses whichever
+        # neighbor beliefs have arrived and iterates at its own pace.
         self.backend = ZeroMQSingleAgentBackend(
             my_id=robot_id,
             neighbors=neighbor_ids,
             network_config=cfg,
+            synchronous=not gbp_async,
         )
 
         # Local ROS1 bridge (odom + cmd_vel)
@@ -74,10 +87,34 @@ class AgentRunner:
         self._poses = {}          # robot_id → {x, y, theta}
         self._payload_state = np.zeros(6)
 
-        # TEAM: replace None with your decentralised controller
-        # e.g.: from swarmlib.controllers import DrCapController
-        #       self.controller = DrCapController(my_id=robot_id, ...)
-        self.controller = None
+        # Decentralised controller. Pattern (see real_robot/README.md):
+        #   - backend is the ZMQ backend above (single-agent)
+        #   - my_id tells the controller to manage only this robot's graph
+        #   - compute_control takes robot_states of shape (1, 4) and returns (1, 2)
+        # TEAM: swap DRCapDistributedController for any other decentralised
+        # controller that follows the same my_id + external-backend pattern.
+        formation = face_contact_formation(
+            n_robots, payload_hx=payload_hx, payload_hy=payload_hy,
+        )
+        self.controller = DRCapDistributedController(
+            num_robots=n_robots,
+            formation=formation,
+            backend=self.backend,
+            my_id=robot_id,
+            config={
+                "horizon": horizon,
+                "v_max": v_max,
+                "sigma_x": 0.5,
+                "sigma_u": 0.3,
+                "sigma_anchor": 0.01,
+                "sigma_r2r": 0.05,
+                "sigma_pull_in": 0.3,
+                "sigma_consensus": 0.1,
+                "gbp_max_iters": gbp_max_iters,
+                "gbp_tol": 1e-3,
+            },
+        )
+        self.controller.reset()
 
         time.sleep(0.2)
 
@@ -143,12 +180,35 @@ def main():
     parser.add_argument("--id", type=int, required=True)
     parser.add_argument("--neighbors", type=int, nargs="*", default=[])
     parser.add_argument("--goal", type=float, nargs=3, default=[5.0, 0.0, 0.0])
+    parser.add_argument("--n-robots", type=int, required=True,
+                        help="Total robots in formation (must match across all agents)")
+    parser.add_argument("--payload-hx", type=float, default=0.45)
+    parser.add_argument("--payload-hy", type=float, default=0.45)
+    parser.add_argument("--control-hz", type=float, default=20.0)
+    parser.add_argument("--horizon", type=int, default=15)
+    parser.add_argument("--v-max", type=float, default=0.25)
+    parser.add_argument("--gbp-max-iters", type=int, default=30)
+    parser.add_argument("--gbp-async", action="store_true",
+                        help="Use asynchronous GBP (non-blocking barrier, uses stale beliefs)")
     args = parser.parse_args()
 
     with open(args.config) as f:
         cfg = yaml.safe_load(f)
 
-    runner = AgentRunner(args.id, args.neighbors, cfg, np.array(args.goal))
+    runner = AgentRunner(
+        robot_id=args.id,
+        neighbor_ids=args.neighbors,
+        network_config=cfg,
+        goal=np.array(args.goal),
+        n_robots=args.n_robots,
+        payload_hx=args.payload_hx,
+        payload_hy=args.payload_hy,
+        control_hz=args.control_hz,
+        gbp_async=args.gbp_async,
+        gbp_max_iters=args.gbp_max_iters,
+        horizon=args.horizon,
+        v_max=args.v_max,
+    )
     runner.run()
 
 

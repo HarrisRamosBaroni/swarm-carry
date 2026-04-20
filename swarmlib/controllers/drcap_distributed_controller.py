@@ -344,14 +344,32 @@ class DRCapDistributedController(BaseController):
     """
     Distributed DR.CAP via GBP message-passing.
 
+    Operates in two modes:
+
+      Simulation mode (my_id is None): holds one LocalRobotGraph per robot in
+      a single process, drives the GBP loop by round-robining through all
+      graphs, and uses a single shared in-process backend (SimulatedBackend
+      or AsyncSimulatedBackend). `compute_control` takes (N,4) robot_states
+      and returns (N,2) velocities. This is the sim scaling experiment path.
+
+      Deployment mode (my_id is an int): holds only this robot's local graph,
+      uses an externally-constructed single-agent backend
+      (ZeroMQSingleAgentBackend, sync or async). `compute_control` takes (1,4)
+      of this robot's state and returns (1,2) of this robot's velocity. This
+      is the path used by real_robot/robot/agent_runner.py.
+
     Parameters
     ----------
     num_robots : int
+        Total number of robots in the formation (both modes).
     formation  : list of (x_off, y_off, yaw) per robot. Same convention as
                  MRCap/DRCap centralised (world-frame xy offset from centroid).
-    backend    : CommunicationBackend. Defaults to SimulatedBackend on the
-                 chosen topology; pass a ZeroMQSingleAgentBackend or
-                 AsyncSimulatedBackend to test real networking / dropout.
+    backend    : CommunicationBackend.
+                 In sim mode defaults to SimulatedBackend(num_robots, topology).
+                 In deployment mode this MUST be supplied (and its my_id must
+                 match the controller's my_id).
+    my_id      : Optional[int]. None = simulation mode; int = deployment mode
+                 for that robot. Default None.
     topology   : dict agent_id -> [neighbor_ids]. Defaults to fully connected.
     config     :
         horizon, sigma_x, sigma_u, sigma_anchor, sigma_mm, sigma_r2r,
@@ -364,11 +382,14 @@ class DRCapDistributedController(BaseController):
         num_robots: int,
         formation: Optional[List[tuple]] = None,
         backend: Optional[CommunicationBackend] = None,
+        my_id: Optional[int] = None,
         topology: Optional[Dict[int, List[int]]] = None,
         config: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(num_robots, config)
         cfg = self.config
+
+        self.my_id = my_id
 
         # Formation: world-frame xy offset from centroid per robot
         if formation is not None:
@@ -385,14 +406,21 @@ class DRCapDistributedController(BaseController):
             topology = create_full_topology(num_robots)
         self._topology = topology
 
-        # Backend: default SimulatedBackend
+        # Backend: default SimulatedBackend in sim mode; required in deploy mode.
         if backend is None:
+            if my_id is not None:
+                raise ValueError(
+                    "Deployment mode (my_id set) requires an externally "
+                    "constructed backend (e.g. ZeroMQSingleAgentBackend)."
+                )
             backend = SimulatedBackend(num_robots, topology)
         self.backend = backend
 
-        # Per-robot local graphs
-        self.local_graphs: List[LocalRobotGraph] = [
-            LocalRobotGraph(
+        # Local graphs keyed by robot id. In sim: all N. In deploy: only my_id.
+        ids_to_build = [my_id] if my_id is not None else list(range(num_robots))
+        self._owned_ids = ids_to_build
+        self.local_graphs: Dict[int, LocalRobotGraph] = {
+            i: LocalRobotGraph(
                 robot_id=i,
                 num_robots=num_robots,
                 r_i=self._r[i],
@@ -400,8 +428,8 @@ class DRCapDistributedController(BaseController):
                 neighbors=topology[i],
                 cfg=cfg,
             )
-            for i in range(num_robots)
-        ]
+            for i in ids_to_build
+        }
 
         self._max_iters = int(cfg.get("gbp_max_iters", 30))
         self._tol       = float(cfg.get("gbp_tol",       1e-3))
@@ -430,33 +458,36 @@ class DRCapDistributedController(BaseController):
         centroid_pose = payload_state[:3].copy()
         goal = np.asarray(goal_state, dtype=float)[:3]
 
-        # Warm-start each local graph. Robot states carry (x, y, vx, vy) only,
-        # so we use centroid theta as a proxy for robot theta.
-        for i, graph in enumerate(self.local_graphs):
+        # Warm-start owned graphs. In deploy mode robot_states is (1,4) and
+        # carries this robot's state at row 0. In sim mode it is (N,4) with
+        # row i for robot i. Robot states carry (x, y, vx, vy) only, so we
+        # use centroid theta as a proxy for robot theta.
+        for i in self._owned_ids:
+            row = 0 if self.my_id is not None else i
             robot_pose = np.array([
-                robot_states[i, 0],
-                robot_states[i, 1],
+                robot_states[row, 0],
+                robot_states[row, 1],
                 centroid_pose[2],
             ])
-            graph.warm_start(robot_pose, centroid_pose, goal, dt)
+            self.local_graphs[i].warm_start(robot_pose, centroid_pose, goal, dt)
 
         # GBP iterations
         iters_done = 0
         for it in range(self._max_iters):
-            for i, graph in enumerate(self.local_graphs):
-                msg = graph.pack_outgoing_message()
+            for i in self._owned_ids:
+                msg = self.local_graphs[i].pack_outgoing_message()
                 self.backend.broadcast(i, msg)
 
             self.backend.barrier()
 
-            for i, graph in enumerate(self.local_graphs):
+            for i in self._owned_ids:
                 inbox = self.backend.receive(i)
                 for sender_id, msg in inbox:
-                    graph.set_neighbor_message(sender_id, msg)
+                    self.local_graphs[i].set_neighbor_message(sender_id, msg)
 
             max_change = 0.0
-            for graph in self.local_graphs:
-                max_change = max(max_change, graph.gbp_step())
+            for i in self._owned_ids:
+                max_change = max(max_change, self.local_graphs[i].gbp_step())
 
             iters_done = it + 1
             if max_change < self._tol:
@@ -464,9 +495,10 @@ class DRCapDistributedController(BaseController):
 
         self._last_iters = iters_done
 
-        # Read centroid control from leader (robot 0). All local copies
-        # converge to similar values once GBP settles.
-        U_c = self.local_graphs[0].first_control()
+        # Read centroid control from my own graph (deploy) or leader robot 0
+        # (sim). All local copies converge to similar values once GBP settles.
+        source_id = self.my_id if self.my_id is not None else 0
+        U_c = self.local_graphs[source_id].first_control()
         lo = np.array([-self._v_max, -self._v_max, -self._omega_max])
         hi = np.array([ self._v_max,  self._v_max,  self._omega_max])
         U_c = np.clip(U_c, lo, hi)
@@ -478,7 +510,8 @@ class DRCapDistributedController(BaseController):
 
     def _robot_velocities(self, U_c: np.ndarray) -> np.ndarray:
         vx_c, vy_c, omega_c = U_c
-        r = self._r
+        # In deploy mode, compute only my own row of the rigid-body map.
+        r = self._r if self.my_id is None else self._r[[self.my_id]]
         vx = vx_c - omega_c * r[:, 1]
         vy = vy_c + omega_c * r[:, 0]
         speeds = np.hypot(vx, vy)

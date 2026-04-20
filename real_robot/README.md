@@ -66,7 +66,9 @@ Change `--id` and `--neighbors` per robot. For decentralised mode the laptop ter
 
 ## Plugging in a controller
 
-Open `real_robot/laptop/central_runner.py` (centralised) or `real_robot/robot/agent_runner.py` (decentralised) and replace the `self.controller = None` line:
+### Centralised
+
+Open `real_robot/laptop/central_runner.py` and replace `self.controller = None`:
 
 ```python
 from swarmlib.controllers import YourController
@@ -74,6 +76,39 @@ self.controller = YourController(num_robots=n_robots, ...)
 ```
 
 The controller must implement `compute_control(payload_state, robot_states, goal_state, dt, forces)` — same interface as the simulation.
+
+### Decentralised — sim→deployment pattern
+
+Decentralised controllers in this repo follow one pattern so that the same class runs unchanged in sim and on real robots. `DRCapDistributedController` is the reference implementation (`swarmlib/controllers/drcap_distributed_controller.py`). Any new decentralised controller the team writes should follow the same pattern:
+
+**1. Accept `my_id` and `backend` as constructor args.**
+```python
+YourController(
+    num_robots=N,
+    formation=formation,
+    backend=backend,      # injected — do NOT construct inside the class
+    my_id=None,           # None = sim (manage all N local graphs); int = deploy (only mine)
+    topology=topology,
+    config={...},
+)
+```
+
+**2. Two behaviours in `compute_control` based on `my_id`:**
+
+| Mode | `my_id` | `robot_states` shape | Return shape | Backend |
+|---|---|---|---|---|
+| Simulation | `None` | `(N, 4)` | `(N, 2)` | `SimulatedBackend` / `AsyncSimulatedBackend` (one process drives all agents) |
+| Deployment | `int` | `(1, 4)` — this robot only | `(1, 2)` — this robot's command | `ZeroMQSingleAgentBackend` (one process per robot) |
+
+Internally, maintain a dict of local graphs keyed by robot id. In sim mode build all `N`; in deploy mode build only `my_id`. The GBP / message loop iterates over owned ids — the code is identical in both modes, just the set of owned ids differs.
+
+**3. Experiment runner vs deployment runner.**
+- Sim: `experiments/<your_method>/run_experiment.py` instantiates the controller with `my_id=None` and a `SimulatedBackend` / `AsyncSimulatedBackend` (see `experiments/drcap_fg/run_experiment.py`).
+- Deploy: `real_robot/robot/agent_runner.py` instantiates one controller per robot process with `my_id=robot_id` and the ZMQ backend it already builds (see how `DRCapDistributedController` is wired in that file). To adopt for your own controller, just change the import + constructor call — no other runner changes needed.
+
+**4. Sync vs async GBP.** `ZeroMQSingleAgentBackend(..., synchronous=False)` makes `barrier()` non-blocking — each agent iterates at its own pace using whatever neighbor beliefs have arrived. Pass `--gbp-async` to `agent_runner.py` to enable this. The paper's DR.CAP evaluations use asynchronous GBP; controller code does not need to change between sync and async.
+
+Testing order: sim (`SimulatedBackend`) → sim with dropout (`AsyncSimulatedBackend`) → deployment (`ZeroMQSingleAgentBackend`, sync then async). Each step only changes the backend + `my_id`.
 
 ---
 

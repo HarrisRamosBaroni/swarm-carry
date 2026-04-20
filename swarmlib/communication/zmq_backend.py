@@ -38,6 +38,12 @@ class ZeroMQSingleAgentBackend(CommunicationBackend):
         Parsed real_robot/config/network.yaml. Used to look up IPs and ports.
     barrier_timeout : float
         Seconds to wait in barrier() before raising TimeoutError.
+    synchronous : bool
+        If True (default), barrier() blocks until one message per neighbor has
+        arrived for the current epoch (synchronous GBP). If False, barrier()
+        does a non-blocking poll-and-drain and advances the epoch immediately —
+        the caller uses whichever neighbor beliefs happen to have arrived,
+        matching the asynchronous GBP scheme in the DR.CAP paper.
     """
 
     def __init__(
@@ -46,6 +52,7 @@ class ZeroMQSingleAgentBackend(CommunicationBackend):
         neighbors: List[int],
         network_config: dict,
         barrier_timeout: float = 5.0,
+        synchronous: bool = True,
     ):
         topology = {my_id: list(neighbors)}
         super().__init__(num_agents=1, topology=topology)
@@ -53,6 +60,7 @@ class ZeroMQSingleAgentBackend(CommunicationBackend):
         self.my_id = my_id
         self._neighbors = list(neighbors)
         self._barrier_timeout = barrier_timeout
+        self._synchronous = synchronous
         self._current_epoch = 0
         self._inbox: List[Tuple[int, GaussianMessage]] = []
         self._received_count = 0
@@ -143,6 +151,22 @@ class ZeroMQSingleAgentBackend(CommunicationBackend):
             self.send(from_id, nid, message)
 
     def barrier(self) -> None:
+        if not self._synchronous:
+            # Async mode: drain any available messages and advance epoch.
+            # The controller uses whatever arrived; missing neighbors are
+            # handled by the GBP step skipping absent beliefs.
+            ready = dict(self._poller.poll(timeout=0))
+            for sub in self._subs:
+                if sub in ready:
+                    _, raw = sub.recv_multipart()
+                    from_id, to_id, gmsg = self._unpack(raw)
+                    if to_id == self.my_id:
+                        self._inbox.append((from_id, gmsg))
+                        self._received_count += 1
+            self._current_epoch += 1
+            self._stats["barrier_calls"] += 1
+            return
+
         deadline = time.monotonic() + self._barrier_timeout
         while self._received_count < self._expected:
             if time.monotonic() > deadline:
@@ -163,7 +187,7 @@ class ZeroMQSingleAgentBackend(CommunicationBackend):
 
     @property
     def is_synchronous(self) -> bool:
-        return True
+        return self._synchronous
 
     def shutdown(self) -> None:
         self._pub.close()
