@@ -2,102 +2,109 @@
 
 ## Setup
 
-We consider $M$ non-holonomic robots arranged around a rigid payload, tasked with transporting
-it from a start position to a goal while avoiding obstacles. Unlike the centralised formulation,
-**no single node holds global state**. Each robot $R_i$ maintains a local factor graph and
-communicates only with its neighbours.
+We consider $M$ holonomic (mecanum-wheeled) robots forming a rigid platform that transports
+a payload to a goal pose. Each robot $R_i$ maintains a **local factor graph** and exchanges
+messages only with its neighbours — no single node holds global state.
 
-The state of robot $i$ at time step $n$ is $\mathbf{x}_n^{r_i} = [x, y, \theta]^\top \in SE(2)$.
-Control inputs are $\mathbf{u}_n^{r_i} = [v_n^i, \omega_n^i]^\top$ (linear and angular velocity).
+Robot $i$ has world-frame state $\mathbf{x}_n^{r_i} = [x, y, \theta]^\top \in SE(2)$.
+The centroid state is $\mathbf{x}_n^c = [x_c, y_c, \theta_c]^\top$.
+The **only decision variable** is the centroid control $\mathbf{u}_n^c = [v_x, v_y, \omega]^\top$;
+robot states are a deterministic function of $\mathbf{u}_n^c$ via the rigid-body matrix.
 
-**The payload centroid is unknown.** Each robot holds a local belief over a shared centroid
-variable $\mathbf{x}_n^c = [x_c, y_c]^\top$, which is estimated collaboratively through
-centroid pull-in factors.
+**The payload centroid is unknown.** Each robot maintains a local belief over the shared
+centroid trajectory, updated through centroid pull-in and consensus factors.
 
 ## Motion Model
 
-Robot motion is non-holonomic. The nonlinear dynamics are decoupled via a midpoint
-approximation. Let $C_\theta = \cos\!\left(\theta_n^{r_i} + \tfrac{\omega_n^{r_i}}{2}\right)$
-and $S_\theta = \sin\!\left(\theta_n^{r_i} + \tfrac{\omega_n^{r_i}}{2}\right)$:
+Both the centroid and each robot are integrated with a world-frame Euler step (exact for
+holonomic drive):
 
 $$
-\mathbf{x}_{n+1}^{r_i} = \mathbf{x}_n^{r_i} +
-\begin{bmatrix} C_\theta & 0 \\ S_\theta & 0 \\ 0 & 1 \end{bmatrix}
-T_s \, \mathbf{u}_n^{r_i}
+\mathbf{x}_{n+1}^c = \mathbf{x}_n^c + \Delta t \, \mathbf{u}_n^c
 $$
 
-## Factor Graph Formulation
+$$
+\mathbf{x}_{n+1}^{r_i} = \mathbf{x}_n^{r_i} + \Delta t \, M_i \, \mathbf{u}_n^c,
+\qquad
+M_i = \begin{bmatrix} 1 & 0 & -r_{iy} \\ 0 & 1 & r_{ix} \\ 0 & 0 & 1 \end{bmatrix}
+$$
 
-Each robot $R_i$ holds a **local factor graph** over its own trajectory
-$\{x_n^{r_i}\}_{n=0}^{N}$, its controls $\{u_n^{r_i}\}_{n=0}^{N-1}$,
-and a shared centroid sequence $\{x_n^c\}_{n=0}^{N}$.
-Inter-robot factors couple adjacent local graphs.
+where $\mathbf{r}_i = [r_{ix}, r_{iy}]^\top$ is the fixed offset of robot $i$ from the
+centroid (known from formation geometry). Formation shape is maintained by construction.
 
-| Factor | Variables | Role |
-|--------|-----------|------|
-| Motion ($f_n^m$) | $(\mathbf{x}_n^{r_i}, \mathbf{u}_n^{r_i}, \mathbf{x}_{n+1}^{r_i})$ | Enforces the nonlinear motion model |
-| Anchor ($f_n^x$) | $\mathbf{x}_n^{r_i}$ | Pins start and goal positions |
-| Obstacle avoidance ($f_n^\text{obs}$) | $\mathbf{x}_n^{r_i}$ | Penalises proximity to obstacles within radius $R$ |
-| Robot-to-robot ($f_n^{r_ir_j}$) | $(\mathbf{x}_n^{r_i}, \mathbf{x}_n^{r_j})$ | Maintains inter-robot separation $L_{ij}$ |
-| Centroid pull-in ($f_n^{cr_i}$) | $(\mathbf{x}_n^{r_i}, \mathbf{x}_n^c)$ | Each robot contributes equally to estimating the geometric centroid |
+## Local Factor Graph
+
+Each robot $R_i$ holds a local factor graph over its own trajectory
+$\{\mathbf{x}_n^{r_i}\}_{n=0}^{N}$, the shared centroid sequence
+$\{\mathbf{x}_n^c\}_{n=0}^{N}$, and the centroid controls
+$\{\mathbf{u}_n^c\}_{n=0}^{N-1}$.
+
+The flat variable vector has dimension $9N + 6$ (robot poses, centroid poses, centroid
+controls), laid out as $[\mathbf{x}^{r_i}_{0:N},\, \mathbf{x}^c_{0:N},\, \mathbf{u}^c_{0:N-1}]$.
+
+| Factor | Variables | Residual | $\sigma$ |
+|--------|-----------|----------|---------|
+| Start anchor | $\mathbf{x}_0^{r_i}$, $\mathbf{x}_0^c$ | $\mathbf{x} - \mathbf{x}^\text{meas}$ | $0.01$ |
+| Reference prior | $\mathbf{x}_n^c$, $n \in (0, N)$ | $\mathbf{x}_n^c - \mathbf{x}_n^\text{ref}$ | $0.5$ |
+| Control regulariser | $\mathbf{u}_n^c$ | $\mathbf{u}_n^c$ | $0.3$ |
+| Centroid motion | $(\mathbf{x}_n^c, \mathbf{u}_n^c, \mathbf{x}_{n+1}^c)$ | $\mathbf{x}_{n+1}^c - (\mathbf{x}_n^c + \Delta t\,\mathbf{u}_n^c)$ | $10^{-4}$ |
+| Robot motion | $(\mathbf{x}_n^{r_i}, \mathbf{u}_n^c, \mathbf{x}_{n+1}^{r_i})$ | $\mathbf{x}_{n+1}^{r_i} - (\mathbf{x}_n^{r_i} + \Delta t\, M_i\,\mathbf{u}_n^c)$ | $10^{-4}$ |
+| Terminal anchor | $\mathbf{x}_N^c$ | $\mathbf{x}_N^c - \mathbf{x}_\text{goal}$ | $0.01$ |
+| Centroid pull-in | $(\mathbf{x}_n^{r_i}, \mathbf{x}_n^c)$ | $\mathbf{x}_n^{r_i}[xy] - \mathbf{x}_n^c[xy]$ (xy only; $\theta$ precision = 0) | $0.3$ |
+| R2R distance | $(\mathbf{x}_n^{r_i}, \mathbf{x}_n^{r_j})$ | $\|\mathbf{x}_n^{r_i} - \mathbf{x}_n^{r_j}\| - L_{ij}$ (scalar) | $0.05$ |
+| Centroid consensus | $\mathbf{x}_n^c$ | $\mathbf{x}_n^c - \hat{\mathbf{x}}_n^{c,\text{nbr}}$ (pulled by neighbour's mean) | $0.1$ |
+
+> **Note:** Obstacle avoidance factors are present in the original DRCAP paper but are not
+> implemented here (removed for simplification).
 
 The total cost is:
 
 $$
-J(\mathbf{x}, \mathbf{u}) =
-\sum_{n=k}^{N} e_n^x
-+ \sum_{n=k}^{N-1} e_n^m
-+ \sum_{j=1}^{J} \sum_{n=k+1}^{N} e_n^\text{obs}
-+ \sum_{n=k}^{N-1} \sum_{i \neq j} e_n^{r_ir_j}
-+ \sum_{n=k}^{N} \sum_{i} e_n^{cr_i}
+J = \underbrace{\sum_n e_n^{x,r_i} + e_n^{x,c}}_{\text{anchors}}
+  + \underbrace{\sum_{n=1}^{N-1} e_n^\text{ref}}_{\text{reference}}
+  + \underbrace{\sum_n e_n^u}_{\text{control}}
+  + \underbrace{\sum_n e_n^{m,c} + e_n^{m,r_i}}_{\text{motion}}
+  + \underbrace{\sum_n e_n^\text{pull}}_{\text{pull-in}}
+  + \underbrace{\sum_{n} \sum_{i \neq j} e_n^{r_ir_j}}_{\text{R2R}}
+  + \underbrace{\sum_n e_n^\text{cons}}_{\text{consensus}}
 $$
 
-where all terms are Mahalanobis-norm squared residuals weighted by per-factor information
-matrices $\Omega$ (see Table I of the paper for tuned covariance values).
+All terms are Mahalanobis-norm squared residuals with the $\sigma$ values listed above.
 
-## Inference: Gaussian Belief Propagation
+## Distributed Inference
 
-Rather than solving the factor graph with a centralised solver (e.g. Levenberg–Marquardt),
-**Gaussian Belief Propagation (GBP)** is used. All beliefs are maintained in canonical
-(information) form $\mathbf{x} \sim \mathcal{N}^{-1}(\boldsymbol{\eta}, \boldsymbol{\Lambda})$.
+Rather than a centralised solver, the graph is optimised via **iterative Gaussian Belief
+Propagation (GBP)** in canonical (information) form
+$\mathbf{x} \sim \mathcal{N}^{-1}(\boldsymbol{\eta}, \boldsymbol{\Lambda})$.
 
-GBP iterates three message-passing steps until convergence:
+Each GBP iteration:
 
-1. **Variable → factor:** $m_{x_i \to f_j} = \prod_{s \in \mathcal{N}(i) \setminus j} m_{f_s \to x_i}$
-2. **Factor → variable:** $m_{f_j \to x_i} = \sum_{X_j \setminus x_i} f_j(X_j) \prod_{k \in \mathcal{N}(j) \setminus i} m_{x_k \to f_j}$
-3. **Belief update:** $b_i(x_i) = \prod_{s \in \mathcal{N}(i)} m_{f_s \to x_i}$
+1. **Re-linearise** the nonlinear R2R distance factor around the current mean.
+2. **Apply consensus:** each neighbour's centroid estimate is added as a soft prior
+   ($\Lambda \mathbf{x}_n^c += \lambda_\text{cons}\,\hat{\mathbf{x}}_n^{c,\text{nbr}}$).
+3. **Linear solve:** $H \boldsymbol{\mu}_\text{new} = \mathbf{b}$ via `np.linalg.solve`.
+4. **Broadcast** updated $(\boldsymbol{\eta}_{r_i}, \boldsymbol{\eta}_c)$ to neighbours.
+5. **Receive** neighbour messages and unpack into $\hat{\mathbf{x}}^{r_j}$, $\hat{\mathbf{x}}^{c,\text{nbr}}$.
 
-Convergence is declared when the estimated trajectory does not change for 10 consecutive
-iterations. Only adjacent robots exchange messages; there is no central coordinator.
+Convergence is declared when $\|\boldsymbol{\mu}_\text{new} - \boldsymbol{\mu}\|_\infty < 10^{-3}$,
+with a maximum of 30 iterations per control step.
 
-The centroid node is held by one robot, with backups distributed across the team.
-If the holder drops out, a new robot is elected automatically.
+The linear part of $H$ (all factors except R2R) is precomputed once per control step;
+only the R2R Jacobian block is updated each iteration.
 
-## Distributed Execution
-
-At each control step:
-
-1. Each robot computes its local graph and iterates GBP until local convergence.
-2. Beliefs are propagated to neighbours, updating inter-robot and centroid factors.
-3. Once all local graphs converge, the planned trajectory is executed for one step.
-4. Beliefs are updated from observed robot positions, and the loop repeats.
-
-## Scalability
-
-The local graph for robot $i$ has $O(N)$ variables and factors, independent of $M$.
-Communication is neighbour-only ($O(1)$ messages per robot per iteration).
-As team size increases from 2 to 64, convergence iterations grow by only $1.1\times$,
-demonstrating near-constant scaling in $M$.
+Communication is neighbour-only. A configurable backend (simulated, async-with-dropout, or
+ZeroMQ) handles message transport. The centroid control $\mathbf{u}_0^{c,*}$ is read from
+robot 0's graph and applied to all robots via the rigid-body mapping.
 
 ## Experiment
 
-For $M \in \{4, 8, 16\}$ robots, trajectories are planned from $(0, 0)$ m to $(10, 0)$ m
-in the presence of point obstacles. Results are compared against a centralised
-GTSAM/Levenberg–Marquardt baseline.
+For $n \in \{2, 3, 4\}$ robots, a face-contact formation (robots touching payload faces) is
+used with `MecanumTransportEnv` (Summit XL Steel, MuJoCo physics).
+The payload is transported $5\,\text{m}$ along the $x$-axis from rest.
 
 Reported metrics per run:
-- **Inter-robot error** — maximum pairwise deviation from the desired formation (m)
-- **Distance to goal** — final centroid error (m)
-- **Deviation** — mean deviation of centroid trajectory from A\* optimal path (m)
-- **Smoothness** — RMS jerk magnitude over the trajectory ($\text{m}\,\text{s}^{-3}$)
-- **Iterations to convergence** — averaged across all robots
+- **Final position error** $\|\mathbf{x}_\text{final}^c[xy] - \mathbf{x}_\text{goal}[xy]\|$ (m)
+- **Mean trajectory deviation** from the straight-line reference (m)
+- **GBP iterations** per control step: mean, max
+- **Solve time** per control step: mean, std, max (ms)
+- **Torque saturation fraction** and peak torque (Nm)
