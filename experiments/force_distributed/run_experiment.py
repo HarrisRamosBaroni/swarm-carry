@@ -142,7 +142,12 @@ def run_single(
             break
         payload = obs["payload"]
         robots  = obs["robots"]
-        forces  = obs.get("wall_forces")
+
+        #force is 2xN vector of forces (where N=num of robots), top half is 
+        # vertical forces, bottom half is horizontal forces
+        forces  = np.array([obs.get("base_forces"), obs.get("wall_forces")])
+
+        #print('!!forces passed to controller', forces)
 
         payload_trajectory.append(payload[:3].tolist())
 

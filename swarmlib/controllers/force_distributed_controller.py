@@ -215,9 +215,10 @@ class LocalRobotGraph:
         """
         Note: assumes world frame angle is deined as 0° when robot facing right
         """
+        print('forces:',forces)
         fh, fv = forces
         fz = fv
-        print('current robot state:', self._xi_block()[0,:])
+        # print('current robot state:', self._xi_block()[0,:])
         fx = fh * np.cos(self._xi_block()[0,2])
         fy = fh * np.sin(self._xi_block()[0,2])
         return np.array([fx, fy, fz])
@@ -247,6 +248,7 @@ class LocalRobotGraph:
         self.dt = max(float(dt), 1e-9)
 
         print('self._robot_pose (real position robot)',self._robot_pose)
+        print('current robot state:', self._xi_block()[0,:])
 
         N = self.N
 
@@ -572,8 +574,8 @@ class ForceDistributedController(BaseController):
             print(f'ading mass estimate {np.sum(forces[1])/9.81 * self.num_robots}kg to window')
             #assuming mass is evenly shared amongst robots, so multiplying personal meaurement by num of robots
             graph.add_mass_measurement(np.sum(forces[1])/9.81  * self.num_robots) #TODO check if correct
-
-            graph.warm_start(robot_pose, centroid_pose, goal, dt, forces)
+            print('!! warm start: passing these forces', forces[:,i])
+            graph.warm_start(robot_pose, centroid_pose, goal, dt, forces[:,i])
 
         # GBP iterations
         iters_done = 0
@@ -619,7 +621,7 @@ class ForceDistributedController(BaseController):
         self._set_solve_time(time.perf_counter() - t0)
         print('compute_control computed controls : ')
         print(self._multi_robots_velocities(U_x))
-        return self._multi_robots_velocities(U_x)
+        return self._multi_robots_velocities(U_x).T
 
     # --- Rigid-body velocity distribution ----------------------------------
 
@@ -628,7 +630,7 @@ class ForceDistributedController(BaseController):
         vy = U_x[:,1]
         speeds = np.hypot(vx, vy)
         scale = np.where(speeds > self._v_max, self._v_max / speeds, 1.0)
-        return [vx * scale, vy * scale]
+        return np.array([vx * scale, vy * scale])
 
     def _robot_velocities(self, U_c: np.ndarray) -> np.ndarray:
         vx_c, vy_c, omega_c = U_c
