@@ -215,7 +215,7 @@ class LocalRobotGraph:
         """
         Note: assumes world frame angle is deined as 0° when robot facing right
         """
-        print('forces:',forces)
+        # print('forces:',forces)
         fh, fv = forces
         fz = fv
         # print('current robot state:', self._xi_block()[0,:])
@@ -247,8 +247,8 @@ class LocalRobotGraph:
         self._goal          = np.asarray(goal,          dtype=float)
         self.dt = max(float(dt), 1e-9)
 
-        print('self._robot_pose (real position robot)',self._robot_pose)
-        print('current robot state:', self._xi_block()[0,:])
+        # print('self._robot_pose (real position robot)',self._robot_pose)
+        # print('current robot state:', self._xi_block()[0,:])
 
         N = self.N
 
@@ -570,11 +570,11 @@ class ForceDistributedController(BaseController):
                 centroid_pose[2],
             ])
             #add mass measurement here bc i'm not sure whee else to put it
-            print('forces measured by robot:', forces)
-            print(f'ading mass estimate {np.sum(forces[1])/9.81 * self.num_robots}kg to window')
+            # print('forces measured by robot:', forces[:,i], '([vertical force, horizontal force])')
+            # print(f'ading mass estimate {np.sum(forces[0,i])/9.81 * self.num_robots}kg to window')
             #assuming mass is evenly shared amongst robots, so multiplying personal meaurement by num of robots
-            graph.add_mass_measurement(np.sum(forces[1])/9.81  * self.num_robots) #TODO check if correct
-            print('!! warm start: passing these forces', forces[:,i])
+            graph.add_mass_measurement(np.sum(forces[0,i])/9.81  * self.num_robots) #TODO check if correct
+            # print('!! warm start: passing these forces', forces[:,i])
             graph.warm_start(robot_pose, centroid_pose, goal, dt, forces[:,i])
 
         # GBP iterations
@@ -619,8 +619,8 @@ class ForceDistributedController(BaseController):
         # U_c = np.clip(U_c, lo, hi)
 
         self._set_solve_time(time.perf_counter() - t0)
-        print('compute_control computed controls : ')
-        print(self._multi_robots_velocities(U_x))
+        # print('compute_control computed controls : ')
+        # print(self._multi_robots_velocities(U_x))
         return self._multi_robots_velocities(U_x).T
 
     # --- Rigid-body velocity distribution ----------------------------------
