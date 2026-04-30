@@ -39,6 +39,7 @@ except ImportError:
     raise ImportError("gtsam required: pip install gtsam")
 
 from .base_controller import BaseController
+from .centroid_estimator import CentroidEstimator
 
 
 # ---------------------------------------------------------------------------
@@ -100,14 +101,18 @@ class MRCapController(BaseController):
                  same format as MecanumTransportEnv's `formation` parameter.
                  If None, robots are placed on a ring of radius r_formation.
     config     : optional dict:
-        horizon      int    receding horizon N (default 15)
-        sigma_x      float  std-dev for reference trajectory priors (default 0.5)
-        sigma_u      float  std-dev for control regularisation (default 0.3)
-        sigma_anchor float  std-dev for current-state / terminal anchors (default 0.01)
-        sigma_mm     float  std-dev for motion model factor (default 1e-4)
-        v_max        float  per-robot speed clamp m/s (default 1.0)
-        omega_max    float  centroid angular velocity clamp rad/s (default 1.5)
-        r_formation  float  ring radius used when formation=None (default 0.6)
+        horizon           int    receding horizon N (default 15)
+        sigma_x           float  std-dev for reference trajectory priors (default 0.5)
+        sigma_u           float  std-dev for control regularisation (default 0.3)
+        sigma_anchor      float  std-dev for current-state / terminal anchors (default 0.01)
+        sigma_mm          float  std-dev for motion model factor (default 1e-4)
+        v_max             float  per-robot speed clamp m/s (default 1.0)
+        omega_max         float  centroid angular velocity clamp rad/s (default 1.5)
+        r_formation       float  ring radius used when formation=None (default 0.6)
+        estimate_centroid bool   if True, infer centroid from robot states rather than
+                                 using payload_state directly; payload_state is still
+                                 used once on the first call after reset() to calibrate
+                                 body-frame offsets (default False)
     """
 
     def __init__(
@@ -143,6 +148,10 @@ class MRCapController(BaseController):
         self._noise_anc = gtsam.noiseModel.Diagonal.Sigmas(np.full(3, self._sigma_anc))
         self._noise_mm  = gtsam.noiseModel.Diagonal.Sigmas(np.full(3, self._sigma_mm))
 
+        self._estimate_centroid = bool(cfg.get("estimate_centroid", False))
+        self._estimator = CentroidEstimator() if self._estimate_centroid else None
+        self._estimator_ready = False
+
     # ------------------------------------------------------------------
     # BaseController interface
     # ------------------------------------------------------------------
@@ -150,6 +159,8 @@ class MRCapController(BaseController):
     def reset(self):
         self._last_solve_time = 0.0
         self._total_solves = 0
+        if self._estimator is not None:
+            self._estimator_ready = False
 
     def compute_control(
         self,
@@ -159,7 +170,13 @@ class MRCapController(BaseController):
         dt: float,
         forces: np.ndarray = None,
     ) -> np.ndarray:
-        centroid = payload_state[:3].copy()   # [x, y, theta]
+        if self._estimate_centroid:
+            if not self._estimator_ready:
+                self._estimator.reset(robot_states, payload_state)
+                self._estimator_ready = True
+            centroid = self._estimator.estimate(robot_states)[:3]
+        else:
+            centroid = payload_state[:3].copy()   # [x, y, theta]
         goal     = np.asarray(goal_state, dtype=float)[:3]
 
         t0 = time.perf_counter()
