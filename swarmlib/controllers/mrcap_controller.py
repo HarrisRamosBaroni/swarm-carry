@@ -25,7 +25,6 @@ Per-robot velocity (holonomic rigid body):
   where r_i = [dx, dy] from centroid to robot i (fixed at reset).
 """
 
-from __future__ import annotations
 
 import time
 from functools import partial

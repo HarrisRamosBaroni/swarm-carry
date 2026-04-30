@@ -2,15 +2,15 @@ robots:
   - id: 0
     ip: "192.168.1.102"   # fill in actual IPs
     pub_port: 5550
-  - id: 1
-    ip: "192.168.1.103"
-    pub_port: 5551
+  # - id: 1
+  #   ip: "192.168.1.122"
+  #   pub_port: 5551
   # - id: 2
   #   ip: "192.168.0.103"
   #   pub_port: 5552
-  # - id: 3
-  #   ip: "192.168.0.104"
-  #   pub_port: 5553
+  - id: 3
+    ip: "192.168.1.122"
+    pub_port: 5553
 
 laptop:
   ip: "192.168.1.55"     # fill in actual IP
@@ -24,7 +24,7 @@ mocap:
   rigid_body_ids:
     robot_0: 1            # PhaseSpace rigid body ID → robot ID mapping
     robot_1: 2
-    payload: 3
-    robot_2: 4
-    robot_3: 5
+    robot_2: 3
+    robot_3: 4
+    payload: 5
 

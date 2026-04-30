@@ -43,7 +43,6 @@ centroid node, per the paper's failover scheme); in practice all robots'
 local uc converge to nearly the same value after GBP converges.
 """
 
-from __future__ import annotations
 
 import time
 from typing import Dict, Any, List, Optional

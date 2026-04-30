@@ -50,7 +50,6 @@ Assumptions
 - robot_states columns: [x, y, θ, vx, vy, ...] (θ unused; vx/vy used for velocity).
 """
 
-from __future__ import annotations
 import numpy as np
 
 

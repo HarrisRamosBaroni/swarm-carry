@@ -10,7 +10,7 @@ Real-robot deployment using ZeroMQ for cross-machine comms and ROS1 locally on e
 
 **Each myAGV** (Ubuntu 18.04 / ROS1 Melodic):
 ```bash
-pip install pyzmq msgpack pyyaml qwiic_nau7802 qwiic_i2c
+pip install pyzmq msgpack pyyaml qwiic_nau7802 qwiic_i2c dataclasses
 ```
 Also needs `myagv_ros` already installed and working.
 

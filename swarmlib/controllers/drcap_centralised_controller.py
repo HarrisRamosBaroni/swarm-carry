@@ -38,7 +38,6 @@ Per-robot velocity (holonomic rigid body):
 
 """
 
-from __future__ import annotations
 
 import time
 from functools import partial
