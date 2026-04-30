@@ -4,7 +4,7 @@ Controllers for multi-robot payload transport.
 
 from .base_controller import BaseController
 from .centroid_estimator import CentroidEstimator
-from .centralized_mpc import CentralizedMPC
+# from .centralized_mpc import CentralizedMPC
 from .mrcap_controller import MRCapController
 from .drcap_centralised_controller import DRCapController
 from .drcap_distributed_controller import DRCapDistributedController

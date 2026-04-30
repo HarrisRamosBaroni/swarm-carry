@@ -26,6 +26,9 @@ from swarmlib.controllers import DRCapDistributedController
 from swarmlib.simulation.generate_mecanum_scene import face_contact_formation
 
 
+PAYLOAD_ID = -1  # sentinel id mocap_bridge uses for the payload rigid body
+
+
 class AgentRunner:
     def __init__(self, robot_id: int, neighbor_ids: list,
                  network_config: dict, goal: np.ndarray,
@@ -166,6 +169,20 @@ class AgentRunner:
 
                 # Decentralised control
                 if self.controller is not None:
+                    # Pull latest payload pose from mocap stream (sentinel id
+                    # -1, set by mocap_bridge). DRCapDistributedController
+                    # consumes payload_state[:3] each step as the centroid
+                    # anchor. If no payload pose has arrived yet, skip this
+                    # tick rather than anchor on a stale zero.
+                    pp = self._poses.get(PAYLOAD_ID)
+                    if pp is None:
+                        next_tick += self._dt
+                        time.sleep(max(0.0, next_tick - time.monotonic()))
+                        continue
+                    self._payload_state[0] = pp["x"]
+                    self._payload_state[1] = pp["y"]
+                    self._payload_state[2] = pp["theta"]
+
                     robot_states = np.array([[
                         odom["x"], odom["y"], odom["vx"], odom["vy"]
                     ]])
