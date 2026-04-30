@@ -38,9 +38,11 @@ class CentralRunner:
                  payload_hy: float = 0.45,
                  horizon: int = 15,
                  v_max: float = 0.25,
-                 use_gt_payload: bool = False):
+                 use_gt_payload: bool = False,
+                 relative_goal: bool = False):
         self._n = n_robots
-        self._goal = goal
+        self._goal = goal          # absolute if not relative_goal; offset if relative_goal
+        self._goal_offset = goal if relative_goal else None  # resolved on first tick
         self._dt = 1.0 / control_hz
         self._use_gt_payload = use_gt_payload
 
@@ -122,6 +124,13 @@ class CentralRunner:
                 ready = self._got_state.all() and (
                     not self._use_gt_payload or self._payload_pose is not None
                 )
+                if ready and self._goal_offset is not None:
+                    # Resolve relative goal once on the first ready tick.
+                    start_x = float(self._robot_states[:self._n, 0].mean())
+                    start_y = float(self._robot_states[:self._n, 1].mean())
+                    self._goal = self._goal_offset + np.array([start_x, start_y, 0.0])
+                    print(f"[central] relative goal resolved to {self._goal}")
+                    self._goal_offset = None
                 if ready:
                     payload_state = self._build_payload_state()
                     controls = self.controller.compute_control(
@@ -155,6 +164,9 @@ def main():
                              "(requires a 'payload' rigid body in mocap). "
                              "Default: estimator mode — payload pose synthesised "
                              "from robot positions at init only.")
+    parser.add_argument("--relative-goal", action="store_true",
+                        help="Treat --goal as an offset from the robots' initial "
+                             "centroid position rather than an absolute world-frame target.")
     args = parser.parse_args()
 
     with open(args.config) as f:
@@ -168,6 +180,7 @@ def main():
         horizon=args.horizon,
         v_max=args.v_max,
         use_gt_payload=args.gt_payload,
+        relative_goal=args.relative_goal,
     )
     runner.run()
 
