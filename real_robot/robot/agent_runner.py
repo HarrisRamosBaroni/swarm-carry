@@ -36,12 +36,14 @@ class AgentRunner:
                  gbp_async: bool = False,
                  gbp_max_iters: int = 30,
                  horizon: int = 15,
-                 v_max: float = 0.25):
+                 v_max: float = 0.25,
+                 passive: bool = False):
         self._id = robot_id
         self._neighbors = neighbor_ids
         self._goal = goal
         self._dt = 1.0 / control_hz
         self._n_robots = n_robots
+        self._passive = passive
 
         cfg = network_config
         ctx = zmq.Context.instance()
@@ -59,22 +61,25 @@ class AgentRunner:
         self._sub.setsockopt_string(zmq.SUBSCRIBE, "cmd")
 
         # Also subscribe to neighbor state/force for decentralised controller
-        for nid in neighbor_ids:
-            nip = next(r["ip"] for r in cfg["robots"] if r["id"] == nid)
-            nport = next(r["pub_port"] for r in cfg["robots"] if r["id"] == nid)
-            self._sub.connect(f"tcp://{nip}:{nport}")
-            self._sub.setsockopt_string(zmq.SUBSCRIBE, "state")
-            self._sub.setsockopt_string(zmq.SUBSCRIBE, "force")
+        if not passive:
+            for nid in neighbor_ids:
+                nip = next(r["ip"] for r in cfg["robots"] if r["id"] == nid)
+                nport = next(r["pub_port"] for r in cfg["robots"] if r["id"] == nid)
+                self._sub.connect(f"tcp://{nip}:{nport}")
+                self._sub.setsockopt_string(zmq.SUBSCRIBE, "state")
+                self._sub.setsockopt_string(zmq.SUBSCRIBE, "force")
 
-        # GBP / distributed algorithm peer comms. synchronous=False matches
-        # the paper's asynchronous GBP scheme: each agent uses whichever
-        # neighbor beliefs have arrived and iterates at its own pace.
-        self.backend = ZeroMQSingleAgentBackend(
-            my_id=robot_id,
-            neighbors=neighbor_ids,
-            network_config=cfg,
-            synchronous=not gbp_async,
-        )
+        # GBP backend — only needed for the decentralised controller. In
+        # passive mode the laptop is the brain; we just publish state and
+        # forward cmd → cmd_vel.
+        self.backend = None
+        if not passive:
+            self.backend = ZeroMQSingleAgentBackend(
+                my_id=robot_id,
+                neighbors=neighbor_ids,
+                network_config=cfg,
+                synchronous=not gbp_async,
+            )
 
         # Local ROS1 bridge (odom + cmd_vel)
         self._ros = ROS1Bridge(node_name=f"swarm_agent_{robot_id}")
@@ -86,6 +91,11 @@ class AgentRunner:
         # State buffers
         self._poses = {}          # robot_id → {x, y, theta}
         self._payload_state = np.zeros(6)
+
+        if passive:
+            self.controller = None
+            time.sleep(0.2)
+            return
 
         # Decentralised controller. Pattern (see real_robot/README.md):
         #   - backend is the ZMQ backend above (single-agent)
@@ -180,8 +190,13 @@ def main():
     parser.add_argument("--id", type=int, required=True)
     parser.add_argument("--neighbors", type=int, nargs="*", default=[])
     parser.add_argument("--goal", type=float, nargs=3, default=[5.0, 0.0, 0.0])
-    parser.add_argument("--n-robots", type=int, required=True,
-                        help="Total robots in formation (must match across all agents)")
+    parser.add_argument("--n-robots", type=int, default=1,
+                        help="Total robots in formation. Required for decentralised "
+                             "mode; ignored in --passive mode.")
+    parser.add_argument("--passive", action="store_true",
+                        help="State publisher + cmd forwarder only — no local "
+                             "controller. Use this when the laptop runs the "
+                             "centralised controller.")
     parser.add_argument("--payload-hx", type=float, default=0.45)
     parser.add_argument("--payload-hy", type=float, default=0.45)
     parser.add_argument("--control-hz", type=float, default=20.0)
@@ -208,6 +223,7 @@ def main():
         gbp_max_iters=args.gbp_max_iters,
         horizon=args.horizon,
         v_max=args.v_max,
+        passive=args.passive,
     )
     runner.run()
 

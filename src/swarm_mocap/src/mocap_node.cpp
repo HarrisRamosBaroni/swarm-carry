@@ -96,6 +96,7 @@ private:
       array_msg.header.frame_id = frame_id_;
 
       for (const auto &r : rigids) {
+        // RCLCPP_INFO(get_logger(), "rigid id=%u cond=%.2f", r.id, r.cond);
         if (r.cond <= 0.0f) continue;  // not tracked
 
         auto pose = to_pose(r.pose);

@@ -42,7 +42,7 @@ source /opt/ros/jazzy/setup.bash && source src/install/setup.bash
 ros2 launch swarm_mocap mocap.launch.py server_ip:=192.168.0.244
 
 # Terminal 2 — mocap → ZeroMQ bridge
-python real_robot/laptop/mocap_bridge.py --config real_robot/config/network.yaml
+python -m real_robot.laptop.mocap_bridge --config real_robot/config/network.yaml
 
 # Terminal 3 — centralised controller (skip for decentralised)
 python real_robot/laptop/central_runner.py --config real_robot/config/network.yaml --n-robots 2 --goal 5.0 0.0 0.0
@@ -68,14 +68,12 @@ Change `--id` and `--neighbors` per robot. For decentralised mode the laptop ter
 
 ### Centralised
 
-Open `real_robot/laptop/central_runner.py` and replace `self.controller = None`:
+`central_runner.py` ships wired to `MRCapController`. Two payload-pose modes:
 
-```python
-from swarmlib.controllers import YourController
-self.controller = YourController(num_robots=n_robots, ...)
-```
+- **Estimator mode (default)** — no payload mocap rigid body required. The runner synthesises an init payload pose from initial robot positions; `CentroidEstimator` calibrates body-frame offsets `r_i` once and infers payload pose+vel from robot states thereafter. Smoke-test friendly.
+- **GT mocap mode** — pass `--gt-payload`. Requires a `payload` rigid body in the mocap software (registered under the `payload:` key in `network.yaml`'s `mocap.rigid_body_ids`). `mocap_bridge.py` forwards it with sentinel id `-1`.
 
-The controller must implement `compute_control(payload_state, robot_states, goal_state, dt, forces)` — same interface as the simulation.
+To swap controllers, edit the `MRCapController(...)` instantiation in `central_runner.py`. Any controller with the standard `compute_control(payload_state, robot_states, goal_state, dt, forces)` signature is a drop-in replacement.
 
 ### Decentralised — sim→deployment pattern
 

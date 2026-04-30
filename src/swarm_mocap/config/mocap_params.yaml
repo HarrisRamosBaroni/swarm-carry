@@ -8,4 +8,4 @@ swarm_mocap:
     # Set these to match however the PhaseSpace software has labelled the rigid bodies
     # (robot_0=0, robot_1=1, ..., payload=N).
     # Leave commented out (or omit) to publish only /mocap/rigids and /mocap/markers.
-    # published_rigid_ids: [0, 1, 2, 3]
+    published_rigid_ids: [0, 1, 2, 3, 4]

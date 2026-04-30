@@ -6,7 +6,14 @@ python real_robot/laptop/central_runner.py \
     --n-robots 2 \
     --goal 5.0 0.0 0.0
 
-TEAM: set self.controller to your swarmlib controller before running.
+By default this runs MRCapController in centroid-estimator mode, which only
+needs ONE payload pose at init (synthesised from initial robot positions if
+no mocap payload rigid body is defined). Pass --gt-payload to use the live
+mocap payload pose every step instead — requires a "payload" rigid body in
+the mocap config and mocap_bridge running.
+
+TEAM: swap MRCapController for any other centralised controller that follows
+the BaseController.compute_control(payload, robots, goal, dt, forces) API.
 """
 import argparse
 import time
@@ -16,40 +23,91 @@ import zmq
 import numpy as np
 
 from real_robot.transport.messages import cmd_msg, unpack
+from swarmlib.controllers import MRCapController
+from swarmlib.simulation.generate_mecanum_scene import face_contact_formation
+
+
+PAYLOAD_ID = -1  # sentinel id used by mocap_bridge for the payload rigid body
 
 
 class CentralRunner:
     def __init__(self, network_config: dict, n_robots: int,
-                 goal: np.ndarray, control_hz: float = 20.0):
+                 goal: np.ndarray,
+                 control_hz: float = 20.0,
+                 payload_hx: float = 0.45,
+                 payload_hy: float = 0.45,
+                 horizon: int = 15,
+                 v_max: float = 0.25,
+                 use_gt_payload: bool = False):
         self._n = n_robots
         self._goal = goal
         self._dt = 1.0 / control_hz
+        self._use_gt_payload = use_gt_payload
 
         cfg = network_config
         ctx = zmq.Context.instance()
 
-        # SUB: receive state + force from all robots
         self._sub = ctx.socket(zmq.SUB)
         for r in cfg["robots"][:n_robots]:
             self._sub.connect(f"tcp://{r['ip']}:{r['pub_port']}")
+        self._sub.connect(f"tcp://{cfg['laptop']['ip']}:{cfg['laptop']['mocap_pub_port']}")
         self._sub.setsockopt_string(zmq.SUBSCRIBE, "state")
         self._sub.setsockopt_string(zmq.SUBSCRIBE, "force")
         self._sub.setsockopt_string(zmq.SUBSCRIBE, "pose")
 
-        # PUB: send cmd_vel to robots
         self._pub = ctx.socket(zmq.PUB)
         self._pub.bind(f"tcp://*:{cfg['laptop']['central_pub_port']}")
 
-        self._robot_states = np.zeros((n_robots, 4))   # [x,y,vx,vy]
-        self._forces = np.zeros((n_robots, 3))          # placeholder shape
-        self._payload_state = np.zeros(6)               # from mocap
+        # robot_states columns: [x, y, theta, vx, vy] — theta needed by
+        # CentroidEstimator (Procrustes uses cols 0:2 and 3:5; col 2 reserved).
+        self._robot_states = np.zeros((n_robots, 5))
+        self._got_state = np.zeros(n_robots, dtype=bool)
+        self._payload_pose = None  # (x, y, theta) from mocap when available
+        self._forces = np.zeros((n_robots, 3))
 
-        # TEAM: replace None with your controller
-        # e.g.: from swarmlib.controllers import CentralizedMPC
-        #       self.controller = CentralizedMPC(num_robots=n_robots, ...)
-        self.controller = None
+        formation = face_contact_formation(
+            n_robots, payload_hx=payload_hx, payload_hy=payload_hy,
+        )
+        self.controller = MRCapController(
+            num_robots=n_robots,
+            formation=formation,
+            config={
+                "horizon": horizon,
+                "v_max": v_max,
+                "estimate_centroid": not use_gt_payload,
+            },
+        )
+        self.controller.reset()
 
-        time.sleep(0.2)  # allow ZeroMQ connections to establish
+        time.sleep(0.2)
+
+    def _drain(self, poller):
+        while dict(poller.poll(timeout=0)):
+            _, raw = self._sub.recv_multipart()
+            d = unpack(raw)
+            t = d.get("t")
+            rid = d.get("id", 0)
+            if t == "state" and 0 <= rid < self._n:
+                self._robot_states[rid] = [
+                    d["x"], d["y"], d["theta"], d["vx"], d["vy"]
+                ]
+                self._got_state[rid] = True
+            elif t == "pose" and rid == PAYLOAD_ID:
+                self._payload_pose = (d["x"], d["y"], d["theta"])
+
+    def _build_payload_state(self) -> np.ndarray:
+        # MRCapController only consumes payload_state[:3] (centroid pose).
+        if self._use_gt_payload:
+            if self._payload_pose is None:
+                return np.zeros(6)  # caller skips control until pose arrives
+            x, y, th = self._payload_pose
+            return np.array([x, y, th, 0.0, 0.0, 0.0])
+        # Estimator mode: synthesise init pose from robot positions on the
+        # first tick. CentroidEstimator.reset uses this once to calibrate r_i;
+        # subsequent ticks ignore payload_state in favour of the estimate.
+        x = float(self._robot_states[:self._n, 0].mean())
+        y = float(self._robot_states[:self._n, 1].mean())
+        return np.array([x, y, 0.0, 0.0, 0.0, 0.0])
 
     def run(self):
         poller = zmq.Poller()
@@ -57,38 +115,25 @@ class CentralRunner:
         next_tick = time.monotonic()
 
         while True:
-            # Drain incoming state/force messages
-            while dict(poller.poll(timeout=0)):
-                topic, raw = self._sub.recv_multipart()
-                d = unpack(raw)
-                t = d.get("t")
-                rid = d.get("id", 0)
-                if t == "state" and rid < self._n:
-                    self._robot_states[rid] = [d["x"], d["y"], d["vx"], d["vy"]]
-                elif t == "force" and rid < self._n:
-                    # Adapt when load cell format is finalised
-                    pass
-                elif t == "pose":
-                    # Use payload rigid body pose for payload_state if needed
-                    pass
+            self._drain(poller)
 
-            # Control tick
             now = time.monotonic()
             if now >= next_tick:
-                if self.controller is not None:
+                ready = self._got_state.all() and (
+                    not self._use_gt_payload or self._payload_pose is not None
+                )
+                if ready:
+                    payload_state = self._build_payload_state()
                     controls = self.controller.compute_control(
-                        payload_state=self._payload_state,
+                        payload_state=payload_state,
                         robot_states=self._robot_states,
                         goal_state=self._goal,
                         dt=self._dt,
                         forces=self._forces,
                     )
-                else:
-                    controls = np.zeros((self._n, 2))
-
-                for i in range(self._n):
-                    raw = cmd_msg(i, float(controls[i, 0]), float(controls[i, 1]))
-                    self._pub.send_multipart([b"cmd", raw])
+                    for i in range(self._n):
+                        raw = cmd_msg(i, float(controls[i, 0]), float(controls[i, 1]))
+                        self._pub.send_multipart([b"cmd", raw])
 
                 next_tick += self._dt
 
@@ -100,12 +145,30 @@ def main():
     parser.add_argument("--config", default="real_robot/config/network.yaml")
     parser.add_argument("--n-robots", type=int, default=2)
     parser.add_argument("--goal", type=float, nargs=3, default=[5.0, 0.0, 0.0])
+    parser.add_argument("--control-hz", type=float, default=20.0)
+    parser.add_argument("--payload-hx", type=float, default=0.45)
+    parser.add_argument("--payload-hy", type=float, default=0.45)
+    parser.add_argument("--horizon", type=int, default=15)
+    parser.add_argument("--v-max", type=float, default=0.25)
+    parser.add_argument("--gt-payload", action="store_true",
+                        help="Use live mocap payload pose every step "
+                             "(requires a 'payload' rigid body in mocap). "
+                             "Default: estimator mode — payload pose synthesised "
+                             "from robot positions at init only.")
     args = parser.parse_args()
 
     with open(args.config) as f:
         cfg = yaml.safe_load(f)
 
-    runner = CentralRunner(cfg, args.n_robots, np.array(args.goal))
+    runner = CentralRunner(
+        cfg, args.n_robots, np.array(args.goal),
+        control_hz=args.control_hz,
+        payload_hx=args.payload_hx,
+        payload_hy=args.payload_hy,
+        horizon=args.horizon,
+        v_max=args.v_max,
+        use_gt_payload=args.gt_payload,
+    )
     runner.run()
 
 

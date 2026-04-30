@@ -8,7 +8,7 @@ Run AFTER swarm_mocap is already publishing:
   ros2 launch swarm_mocap mocap.launch.py server_ip:=192.168.0.244
 
 Then:
-  python real_robot/laptop/mocap_bridge.py --config real_robot/config/network.yaml
+  python -m real_robot.laptop.mocap_bridge --config real_robot/config/network.yaml
 """
 import argparse
 import math
@@ -30,11 +30,16 @@ class MocapBridge(Node):
         self._pub = ctx.socket(zmq.PUB)
         self._pub.bind(f"tcp://*:{network_config['laptop']['mocap_pub_port']}")
 
-        # Subscribe to each rigid body's per-body topic
-        for robot_id, rb_id in rigid_body_ids.items():
-            if not robot_id.startswith("robot_"):
+        # Subscribe to each rigid body's per-body topic. robot_<i> maps to
+        # id=i; the optional "payload" key maps to id=-1 (sentinel — robots
+        # never have negative ids) so central_runner can pick it out.
+        for key, rb_id in rigid_body_ids.items():
+            if key.startswith("robot_"):
+                rid = int(key.split("_")[1])
+            elif key == "payload":
+                rid = -1
+            else:
                 continue
-            rid = int(robot_id.split("_")[1])
             self.create_subscription(
                 PoseStamped,
                 f"/mocap/rigid_{rb_id}",
