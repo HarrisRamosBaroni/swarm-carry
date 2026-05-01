@@ -11,8 +11,9 @@ from .drcap_distributed_controller import DRCapDistributedController
 from .force_centralised_controller import ForceCentralisedController
 from .force_centralised_controller_cvel import ForceCentralisedControllerCVel
 from .force_distributed_controller import ForceDistributedController
+from .forceless_centralised_controller import ForcelessCentralisedControllerCVel
 
 __all__ = ['BaseController', 'CentroidEstimator', 'CentralizedMPC', 'MRCapController',
            'DRCapController', 'DRCapDistributedController',
            'ForceCentralisedController', 'ForceCentralisedControllerCVel',
-           'ForceDistributedController']
+           'ForceDistributedController', 'ForcelessCentralisedControllerCVel']
