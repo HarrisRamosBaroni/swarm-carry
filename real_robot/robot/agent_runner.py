@@ -22,8 +22,6 @@ from real_robot.transport.messages import force_msg, unpack
 from real_robot.robot.ros1_bridge import ROS1Bridge
 from real_robot.robot.load_cell_reader import LoadCellReader
 from swarmlib.communication.zmq_backend import ZeroMQSingleAgentBackend
-from swarmlib.controllers import DRCapDistributedController
-from swarmlib.simulation.generate_mecanum_scene import face_contact_formation
 
 
 PAYLOAD_ID = -1  # sentinel id mocap_bridge uses for the payload rigid body
@@ -33,8 +31,6 @@ class AgentRunner:
     def __init__(self, robot_id: int, neighbor_ids: list,
                  network_config: dict, goal: np.ndarray,
                  n_robots: int,
-                 payload_hx: float = 0.45,
-                 payload_hy: float = 0.45,
                  control_hz: float = 20.0,
                  gbp_async: bool = False,
                  gbp_max_iters: int = 30,
@@ -95,41 +91,34 @@ class AgentRunner:
         self._own_prev_pose = None  # for velocity differentiation
         self._payload_state = np.zeros(6)
 
-        if passive:
-            self.controller = None
-            time.sleep(0.2)
-            return
-
-        # Decentralised controller. Pattern (see real_robot/README.md):
-        #   - backend is the ZMQ backend above (single-agent)
-        #   - my_id tells the controller to manage only this robot's graph
-        #   - compute_control takes robot_states of shape (1, 4) and returns (1, 2)
-        # TEAM: swap DRCapDistributedController for any other decentralised
-        # controller that follows the same my_id + external-backend pattern.
-        formation = face_contact_formation(
-            n_robots, payload_hx=payload_hx, payload_hy=payload_hy,
-        )
-        self.controller = DRCapDistributedController(
-            num_robots=n_robots,
-            formation=formation,
-            backend=self.backend,
-            my_id=robot_id,
-            config={
-                "horizon": horizon,
-                "v_max": v_max,
-                "sigma_x": 0.5,
-                "sigma_u": 0.3,
-                "sigma_anchor": 0.01,
-                "sigma_r2r": 0.05,
-                "sigma_pull_in": 0.3,
-                "sigma_consensus": 0.1,
-                "gbp_max_iters": gbp_max_iters,
-                "gbp_tol": 1e-3,
-            },
-        )
-        self.controller.reset()
+        self.controller = None
+        self._controller_cfg = {
+            "horizon": horizon,
+            "v_max": v_max,
+            "sigma_x": 0.5,
+            "sigma_u": 0.3,
+            "sigma_anchor": 0.01,
+            "sigma_r2r": 0.05,
+            "sigma_pull_in": 0.3,
+            "sigma_consensus": 0.1,
+            "gbp_max_iters": gbp_max_iters,
+            "gbp_tol": 1e-3,
+        }
 
         time.sleep(0.2)
+
+    def _formation_from_poses(self) -> list:
+        pp = self._poses[PAYLOAD_ID]
+        p_c = np.array([pp["x"], pp["y"]])
+        theta = float(pp["theta"])
+        c, s = np.cos(theta), np.sin(theta)
+        R_inv = np.array([[c, s], [-s, c]])
+        offsets = []
+        for i in range(self._n_robots):
+            rp = self._poses[i]
+            r_body = R_inv @ (np.array([rp["x"], rp["y"]]) - p_c)
+            offsets.append((float(r_body[0]), float(r_body[1]), 0.0))
+        return offsets
 
     def run(self):
         poller = zmq.Poller()
@@ -155,15 +144,29 @@ class AgentRunner:
                 raw_force = force_msg(self._id, lc_readings)
                 self._pub.send_multipart([b"force", raw_force])
 
-                if self.controller is not None:
-                    # All poses come from mocap bridge. Skip tick until both
-                    # own pose and payload pose have arrived.
+                if not self._passive:
+                    # All poses come from mocap bridge. Skip tick until own
+                    # pose, payload pose, and all peer poses have arrived.
                     own = self._poses.get(self._id)
                     pp = self._poses.get(PAYLOAD_ID)
-                    if own is None or pp is None:
+                    all_peers = all(i in self._poses for i in range(self._n_robots))
+                    if own is None or pp is None or not all_peers:
                         next_tick += self._dt
                         time.sleep(max(0.0, next_tick - time.monotonic()))
                         continue
+
+                    if self.controller is None:
+                        from swarmlib.controllers import DRCapDistributedController
+                        formation = self._formation_from_poses()
+                        print(f"[agent {self._id}] formation calibrated from mocap: {formation}")
+                        self.controller = DRCapDistributedController(
+                            num_robots=self._n_robots,
+                            formation=formation,
+                            backend=self.backend,
+                            my_id=self._id,
+                            config=self._controller_cfg,
+                        )
+                        self.controller.reset()
 
                     # Differentiate own mocap pose for velocity
                     if self._own_prev_pose is not None:
@@ -209,8 +212,6 @@ def main():
                         help="State publisher + cmd forwarder only — no local "
                              "controller. Use this when the laptop runs the "
                              "centralised controller.")
-    parser.add_argument("--payload-hx", type=float, default=0.45)
-    parser.add_argument("--payload-hy", type=float, default=0.45)
     parser.add_argument("--control-hz", type=float, default=20.0)
     parser.add_argument("--horizon", type=int, default=15)
     parser.add_argument("--v-max", type=float, default=0.25)
@@ -228,8 +229,6 @@ def main():
         network_config=cfg,
         goal=np.array(args.goal),
         n_robots=args.n_robots,
-        payload_hx=args.payload_hx,
-        payload_hy=args.payload_hy,
         control_hz=args.control_hz,
         gbp_async=args.gbp_async,
         gbp_max_iters=args.gbp_max_iters,

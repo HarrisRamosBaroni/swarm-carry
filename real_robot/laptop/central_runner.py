@@ -12,6 +12,10 @@ velocities are derived by differentiating consecutive mocap poses. Pass
 centroid estimator — requires a "payload" entry in network.yaml and
 mocap_bridge running.
 
+The controller is constructed on the first tick that has full mocap data.
+Robot-to-payload formation offsets are derived from actual mocap poses at
+that moment, so no payload geometry parameters are needed.
+
 TEAM: swap MRCapController for any other centralised controller that follows
 the BaseController.compute_control(payload, robots, goal, dt, forces) API.
 """
@@ -24,7 +28,6 @@ import numpy as np
 
 from real_robot.transport.messages import cmd_msg, unpack
 from swarmlib.controllers import MRCapController
-from swarmlib.simulation.generate_mecanum_scene import face_contact_formation
 
 
 PAYLOAD_ID = -1  # sentinel id used by mocap_bridge for the payload rigid body
@@ -34,8 +37,6 @@ class CentralRunner:
     def __init__(self, network_config: dict, n_robots: int,
                  goal: np.ndarray,
                  control_hz: float = 20.0,
-                 payload_hx: float = 0.45,
-                 payload_hy: float = 0.45,
                  horizon: int = 15,
                  v_max: float = 0.25,
                  use_gt_payload: bool = False,
@@ -68,19 +69,12 @@ class CentralRunner:
         self._payload_pose = None  # (x, y, theta) from mocap when available
         self._forces = np.zeros((n_robots, 3))
 
-        formation = face_contact_formation(
-            n_robots, payload_hx=payload_hx, payload_hy=payload_hy,
-        )
-        self.controller = MRCapController(
-            num_robots=n_robots,
-            formation=formation,
-            config={
-                "horizon": horizon,
-                "v_max": v_max,
-                "estimate_centroid": not use_gt_payload,
-            },
-        )
-        self.controller.reset()
+        self.controller = None
+        self._controller_cfg = {
+            "horizon": horizon,
+            "v_max": v_max,
+            "estimate_centroid": not use_gt_payload,
+        }
 
         time.sleep(0.2)
 
@@ -106,6 +100,14 @@ class CentralRunner:
                 self._robot_prev_pose[rid] = [x, y, theta]
                 self._robot_prev_ts[rid] = ts
                 self._got_state[rid] = True
+
+    def _formation_from_poses(self, payload_state: np.ndarray) -> list:
+        p_c = payload_state[:2]
+        theta = float(payload_state[2])
+        c, s = np.cos(theta), np.sin(theta)
+        R_inv = np.array([[c, s], [-s, c]])
+        r_body = (self._robot_states[:self._n, :2] - p_c) @ R_inv.T
+        return [(float(r_body[i, 0]), float(r_body[i, 1]), 0.0) for i in range(self._n)]
 
     def _build_payload_state(self) -> np.ndarray:
         # MRCapController only consumes payload_state[:3] (centroid pose).
@@ -143,6 +145,15 @@ class CentralRunner:
                     self._goal_offset = None
                 if ready:
                     payload_state = self._build_payload_state()
+                    if self.controller is None:
+                        formation = self._formation_from_poses(payload_state)
+                        print(f"[central] formation calibrated from mocap: {formation}")
+                        self.controller = MRCapController(
+                            num_robots=self._n,
+                            formation=formation,
+                            config=self._controller_cfg,
+                        )
+                        self.controller.reset()
                     controls = self.controller.compute_control(
                         payload_state=payload_state,
                         robot_states=self._robot_states,
@@ -165,8 +176,6 @@ def main():
     parser.add_argument("--n-robots", type=int, default=2)
     parser.add_argument("--goal", type=float, nargs=3, default=[5.0, 0.0, 0.0])
     parser.add_argument("--control-hz", type=float, default=20.0)
-    parser.add_argument("--payload-hx", type=float, default=0.45)
-    parser.add_argument("--payload-hy", type=float, default=0.45)
     parser.add_argument("--horizon", type=int, default=15)
     parser.add_argument("--v-max", type=float, default=0.25)
     parser.add_argument("--gt-payload", action="store_true",
@@ -185,8 +194,6 @@ def main():
     runner = CentralRunner(
         cfg, args.n_robots, np.array(args.goal),
         control_hz=args.control_hz,
-        payload_hx=args.payload_hx,
-        payload_hy=args.payload_hy,
         horizon=args.horizon,
         v_max=args.v_max,
         use_gt_payload=args.gt_payload,
