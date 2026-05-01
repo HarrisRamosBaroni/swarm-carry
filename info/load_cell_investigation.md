@@ -128,3 +128,31 @@ The analytic model correctly predicts that ζ has negligible effect once above c
 The code is in a partially-reworked state. The spring displacement approach is wired up correctly (qpos/qvel read, internal tare subtraction), but k=500 produces wrong readings. Before changing approach, it is worth:
 - Visualising the scene to diagnose the geometric issue
 - Testing whether the old k≈651 sweep (which used HX=HY=0.60) gives correct readings with the current code as a sanity check
+
+---
+
+## Resolution
+
+### Root cause
+Fork plates from adjacent-face robots physically overlap at payload corners when the payload is small (HX=HY≤~0.45 m). With HX=HY=0.30 the standoff is 0.70 m and the ±0.20 m wide plates intersect at the corners. This caused cross-robot collisions that pushed some plates far below the payload (joint deflections of −49 mm and −69 mm, well beyond the ±25 mm range). Those robots had zero contact with the payload; their spring readings measured chassis self-contact, not payload force. This is why readings were independent of payload mass.
+
+All prior parameter sweeping (k, ζ, solref co-tuning) was irrelevant to this bug.
+
+### Fix 1 — collision filtering
+Added `contype="2" conaffinity="1"` to both fork_base and fork_wall geoms in `generate_mecanum_scene.py`. Fork geoms collide with anything of contype=1 (payload, floor, chassis) but not with each other (contype=2 & conaffinity=1 → no match between two fork geoms).
+
+### Fix 2 — use HX=HY=0.60 for face_contact_formation
+At this payload size the standoff is 1.00 m and fork plates clear each other geometrically regardless of collision filtering.
+
+### Fix 3 — read forces via mj_contactForce()
+`_read_carriage_forces()` in `mecanum_env.py` was rewritten to iterate `data.contact` and call `mujoco.mj_contactForce(model, data, c_id, result)`. `result[0]` is the normal force for that contact. Spring joints are kept — they break rigid-rigid indeterminacy so each robot gets a unique load share — but force *reading* no longer uses k·q + d·q̇, which misses range-limit constraint forces.
+
+**Note:** `data.cfrc_ext` is an input buffer for applying external forces to bodies. It is never populated by the solver and always reads zero.
+
+### Verified results (HX=HY=0.60, N=4, face_contact_formation)
+
+| M (kg) | mass_est (settle) | error | per-robot equal? |
+|--------|------------------|-------|-----------------|
+| 1.0 | 1.004 | +0.4% | ✓ |
+| 2.0 | 2.020 | +1.0% | ✓ |
+| 5.0 | 5.061 | +1.2% | ✓ |

@@ -10,9 +10,33 @@ Real-robot deployment using ZeroMQ for cross-machine comms and ROS1 locally on e
 
 **Each myAGV** (Ubuntu 18.04 / ROS1 Melodic):
 ```bash
-pip install pyzmq msgpack pyyaml qwiic_nau7802 qwiic_i2c dataclasses
+pip install pyzmq msgpack pyyaml qwiic_nau7802 qwiic_i2c dataclasses gtsam
 ```
 Also needs `myagv_ros` already installed and working.
+
+---
+
+## Pose pipeline
+
+All ground-truth poses flow from a single source — the PhaseSpace server — and are fanned out over ZMQ by `mocap_bridge`. No robot touches the mocap server directly (the OWL binary is x86-only).
+
+```
+PhaseSpace server
+    │  OWL (TCP, mm, PhaseSpace axes)
+    ▼
+swarm_mocap (ROS2, laptop)          converts mm→m, swaps axes, publishes
+    │  /mocap/rigid_{phasespace_id}  e.g. rigid_1, rigid_4, rigid_5
+    ▼
+mocap_bridge.py (laptop)            maps PhaseSpace IDs → application IDs
+    │                               robots: phasespace_id → robot id (0,1,2…)
+    │                               payload: phasespace_id → id -1 (sentinel)
+    │  ZMQ PUB "pose" {id, x, y, theta}
+    ▼
+central_runner / agent_runner       consume by id; robots differentiate
+                                    consecutive poses for vx, vy
+```
+
+PhaseSpace rigid body IDs are defined in the PhaseSpace web UI and mapped to application IDs in `network.yaml` via the `mocap_rigid_id` field on each robot entry and the `payload.mocap_rigid_id` field.
 
 ---
 
@@ -71,7 +95,7 @@ Change `--id` and `--neighbors` per robot. For decentralised mode the laptop ter
 `central_runner.py` ships wired to `MRCapController`. Two payload-pose modes:
 
 - **Estimator mode (default)** — no payload mocap rigid body required. The runner synthesises an init payload pose from initial robot positions; `CentroidEstimator` calibrates body-frame offsets `r_i` once and infers payload pose+vel from robot states thereafter. Smoke-test friendly.
-- **GT mocap mode** — pass `--gt-payload`. Requires a `payload` rigid body in the mocap software (registered under the `payload:` key in `network.yaml`'s `mocap.rigid_body_ids`). `mocap_bridge.py` forwards it with sentinel id `-1`.
+- **GT mocap mode** — pass `--gt-payload`. Requires a `payload` rigid body in the mocap software (registered under `payload.mocap_rigid_id` in `network.yaml`). `mocap_bridge.py` forwards it with sentinel id `-1`.
 
 To swap controllers, edit the `MRCapController(...)` instantiation in `central_runner.py`. Any controller with the standard `compute_control(payload_state, robot_states, goal_state, dt, forces)` signature is a drop-in replacement.
 

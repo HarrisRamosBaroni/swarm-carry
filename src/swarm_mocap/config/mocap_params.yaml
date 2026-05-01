@@ -5,7 +5,7 @@ swarm_mocap:
     server_ip: "192.168.1.25"       # PhaseSpace OWL server IP (from setup doc)
     frame_id: "mocap"               # TF frame for all published poses
     # List rigid body IDs that should also get individual /mocap/rigid_{id} topics.
-    # Set these to match however the PhaseSpace software has labelled the rigid bodies
-    # (robot_0=0, robot_1=1, ..., payload=N).
+    # These are the IDs assigned by the PhaseSpace software — check the web UI.
+    # Must include every ID listed under mocap_rigid_id in network.yaml.
     # Leave commented out (or omit) to publish only /mocap/rigids and /mocap/markers.
     published_rigid_ids: [0, 1, 2, 3, 4, 5]

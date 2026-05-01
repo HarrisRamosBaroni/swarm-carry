@@ -6,11 +6,11 @@ python real_robot/laptop/central_runner.py \
     --n-robots 2 \
     --goal 5.0 0.0 0.0
 
-By default this runs MRCapController in centroid-estimator mode, which only
-needs ONE payload pose at init (synthesised from initial robot positions if
-no mocap payload rigid body is defined). Pass --gt-payload to use the live
-mocap payload pose every step instead — requires a "payload" rigid body in
-the mocap config and mocap_bridge running.
+Robot and payload states come entirely from mocap (via mocap_bridge). Robot
+velocities are derived by differentiating consecutive mocap poses. Pass
+--gt-payload to use the live mocap payload pose every step instead of the
+centroid estimator — requires a "payload" entry in network.yaml and
+mocap_bridge running.
 
 TEAM: swap MRCapController for any other centralised controller that follows
 the BaseController.compute_control(payload, robots, goal, dt, forces) API.
@@ -53,16 +53,17 @@ class CentralRunner:
         for r in cfg["robots"][:n_robots]:
             self._sub.connect(f"tcp://{r['ip']}:{r['pub_port']}")
         self._sub.connect(f"tcp://{cfg['laptop']['ip']}:{cfg['laptop']['mocap_pub_port']}")
-        self._sub.setsockopt_string(zmq.SUBSCRIBE, "state")
         self._sub.setsockopt_string(zmq.SUBSCRIBE, "force")
         self._sub.setsockopt_string(zmq.SUBSCRIBE, "pose")
 
         self._pub = ctx.socket(zmq.PUB)
         self._pub.bind(f"tcp://*:{cfg['laptop']['central_pub_port']}")
 
-        # robot_states columns: [x, y, theta, vx, vy] — theta needed by
-        # CentroidEstimator (Procrustes uses cols 0:2 and 3:5; col 2 reserved).
+        # robot_states columns: [x, y, theta, vx, vy] — all from mocap.
+        # vx/vy are derived by differentiating consecutive pose messages.
         self._robot_states = np.zeros((n_robots, 5))
+        self._robot_prev_pose = np.full((n_robots, 3), np.nan)  # (x, y, theta) last tick
+        self._robot_prev_ts = np.zeros(n_robots)
         self._got_state = np.zeros(n_robots, dtype=bool)
         self._payload_pose = None  # (x, y, theta) from mocap when available
         self._forces = np.zeros((n_robots, 3))
@@ -87,15 +88,24 @@ class CentralRunner:
         while dict(poller.poll(timeout=0)):
             _, raw = self._sub.recv_multipart()
             d = unpack(raw)
-            t = d.get("t")
+            if d.get("t") != "pose":
+                continue
             rid = d.get("id", 0)
-            if t == "state" and 0 <= rid < self._n:
-                self._robot_states[rid] = [
-                    d["x"], d["y"], d["theta"], d["vx"], d["vy"]
-                ]
+            x, y, theta, ts = d["x"], d["y"], d["theta"], d["ts"]
+            if rid == PAYLOAD_ID:
+                self._payload_pose = (x, y, theta)
+            elif 0 <= rid < self._n:
+                prev = self._robot_prev_pose[rid]
+                dt = ts - self._robot_prev_ts[rid]
+                if not np.isnan(prev[0]) and dt > 0:
+                    vx = (x - prev[0]) / dt
+                    vy = (y - prev[1]) / dt
+                else:
+                    vx = vy = 0.0
+                self._robot_states[rid] = [x, y, theta, vx, vy]
+                self._robot_prev_pose[rid] = [x, y, theta]
+                self._robot_prev_ts[rid] = ts
                 self._got_state[rid] = True
-            elif t == "pose" and rid == PAYLOAD_ID:
-                self._payload_pose = (d["x"], d["y"], d["theta"])
 
     def _build_payload_state(self) -> np.ndarray:
         # MRCapController only consumes payload_state[:3] (centroid pose).

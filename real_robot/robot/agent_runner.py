@@ -18,7 +18,7 @@ import yaml
 import zmq
 import numpy as np
 
-from real_robot.transport.messages import state_msg, force_msg, unpack
+from real_robot.transport.messages import force_msg, unpack
 from real_robot.robot.ros1_bridge import ROS1Bridge
 from real_robot.robot.load_cell_reader import LoadCellReader
 from swarmlib.communication.zmq_backend import ZeroMQSingleAgentBackend
@@ -63,13 +63,12 @@ class AgentRunner:
         self._sub.setsockopt_string(zmq.SUBSCRIBE, "pose")
         self._sub.setsockopt_string(zmq.SUBSCRIBE, "cmd")
 
-        # Also subscribe to neighbor state/force for decentralised controller
+        # Also subscribe to neighbor force for decentralised controller
         if not passive:
             for nid in neighbor_ids:
                 nip = next(r["ip"] for r in cfg["robots"] if r["id"] == nid)
                 nport = next(r["pub_port"] for r in cfg["robots"] if r["id"] == nid)
                 self._sub.connect(f"tcp://{nip}:{nport}")
-                self._sub.setsockopt_string(zmq.SUBSCRIBE, "state")
                 self._sub.setsockopt_string(zmq.SUBSCRIBE, "force")
 
         # GBP backend — only needed for the decentralised controller. In
@@ -84,15 +83,16 @@ class AgentRunner:
                 synchronous=not gbp_async,
             )
 
-        # Local ROS1 bridge (odom + cmd_vel)
+        # Local ROS1 bridge (cmd_vel only — poses come from mocap)
         self._ros = ROS1Bridge(node_name=f"swarm_agent_{robot_id}")
 
         # Load cells
         self._lc = LoadCellReader()
         self._lc.tare()
 
-        # State buffers
-        self._poses = {}          # robot_id → {x, y, theta}
+        # State buffers — all poses come from mocap bridge
+        self._poses = {}           # robot_id → latest pose message dict
+        self._own_prev_pose = None  # for velocity differentiation
         self._payload_state = np.zeros(6)
 
         if passive:
@@ -145,48 +145,43 @@ class AgentRunner:
                 if t == "pose":
                     self._poses[d["id"]] = d
                 elif t == "cmd" and d.get("id") == self._id:
-                    # Centralised command — apply immediately
                     self._ros.send_cmd(d["vx"], d["vy"])
 
             self._ros.spin_once()
 
             now = time.monotonic()
             if now >= next_tick:
-                odom = self._ros.get_odom()
                 lc_readings = self._lc.read()
-
-                # Broadcast own state and force to peers/laptop
-                raw_state = state_msg(
-                    self._id,
-                    odom["x"], odom["y"],
-                    odom["vx"], odom["vy"],
-                    odom["theta"], odom["omega"],
-                )
-                self._pub.send_multipart([b"state", raw_state])
-
                 raw_force = force_msg(self._id, lc_readings)
                 self._pub.send_multipart([b"force", raw_force])
 
-                # Decentralised control
                 if self.controller is not None:
-                    # Pull latest payload pose from mocap stream (sentinel id
-                    # -1, set by mocap_bridge). DRCapDistributedController
-                    # consumes payload_state[:3] each step as the centroid
-                    # anchor. If no payload pose has arrived yet, skip this
-                    # tick rather than anchor on a stale zero.
+                    # All poses come from mocap bridge. Skip tick until both
+                    # own pose and payload pose have arrived.
+                    own = self._poses.get(self._id)
                     pp = self._poses.get(PAYLOAD_ID)
-                    if pp is None:
+                    if own is None or pp is None:
                         next_tick += self._dt
                         time.sleep(max(0.0, next_tick - time.monotonic()))
                         continue
+
+                    # Differentiate own mocap pose for velocity
+                    if self._own_prev_pose is not None:
+                        dt = own["ts"] - self._own_prev_pose["ts"]
+                        if dt > 0:
+                            vx = (own["x"] - self._own_prev_pose["x"]) / dt
+                            vy = (own["y"] - self._own_prev_pose["y"]) / dt
+                        else:
+                            vx = vy = 0.0
+                    else:
+                        vx = vy = 0.0
+                    self._own_prev_pose = own
+
                     self._payload_state[0] = pp["x"]
                     self._payload_state[1] = pp["y"]
                     self._payload_state[2] = pp["theta"]
 
-                    robot_states = np.array([[
-                        odom["x"], odom["y"], odom["vx"], odom["vy"]
-                    ]])
-                    # TEAM: pass peer states from self._poses as needed by controller
+                    robot_states = np.array([[own["x"], own["y"], vx, vy]])
                     controls = self.controller.compute_control(
                         payload_state=self._payload_state,
                         robot_states=robot_states,
