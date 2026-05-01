@@ -1,20 +1,20 @@
 robots:
-  - id: 0
-    ip: "192.168.1.102"   # fill in actual IPs
+  # - id: 0
+  #   ip: "192.168.1.102"   # fill in actual IPs
+  #   pub_port: 5550
+  #   mocap_rigid_id: 1     # PhaseSpace rigid body ID for this robot
+  - id: 1
+    ip: "192.168.1.115"
     pub_port: 5550
-    mocap_rigid_id: 1     # PhaseSpace rigid body ID for this robot
-  # - id: 1
+    mocap_rigid_id: 2
+  - id: 0
+    ip: "192.168.1.121"
+    pub_port: 5557
+    mocap_rigid_id: 3
+  # - id: 3
   #   ip: "192.168.1.122"
-  #   pub_port: 5551
-  #   mocap_rigid_id: 2
-  # - id: 2
-  #   ip: "192.168.0.103"
-  #   pub_port: 5552
-  #   mocap_rigid_id: 3
-  - id: 3
-    ip: "192.168.1.122"
-    pub_port: 5553
-    mocap_rigid_id: 4     # PhaseSpace rigid body ID for this robot
+  #   pub_port: 5553
+  #   mocap_rigid_id: 4     # PhaseSpace rigid body ID for this robot
 
 laptop:
   ip: "192.168.1.55"     # fill in actual IP

@@ -12,6 +12,7 @@ python real_robot/robot/agent_runner.py \
 TEAM: set self.controller to your swarmlib controller (decentralised variant).
 """
 import argparse
+import signal
 import time
 
 import yaml
@@ -85,11 +86,19 @@ class AgentRunner:
         # Load cells
         self._lc = LoadCellReader()
         self._lc.tare()
+        print(f"[agent {robot_id}] load cell tared")
 
         # State buffers — all poses come from mocap bridge
         self._poses = {}           # robot_id → latest pose message dict
         self._own_prev_pose = None  # for velocity differentiation
         self._payload_state = np.zeros(6)
+
+        # Diagnostic state
+        self._got_own_pose = False
+        self._got_payload_pose = False
+        self._printed_waiting = False
+        self._cmd_count = 0
+        self._last_heartbeat = 0.0
 
         self.controller = None
         self._controller_cfg = {
@@ -105,7 +114,20 @@ class AgentRunner:
             "gbp_tol": 1e-3,
         }
 
+        self._running = True
+        signal.signal(signal.SIGINT, self._handle_sigint)
+        signal.signal(signal.SIGTERM, self._handle_sigint)
+
+        laptop_ip = cfg['laptop']['ip']
+        mode = "passive" if passive else "active"
+        print(f"[agent {robot_id}] ready — mode={mode}, pub_port={my_port}, "
+              f"laptop={laptop_ip}, neighbors={neighbor_ids}")
+
         time.sleep(0.2)
+
+    def _handle_sigint(self, sig, frame):
+        print(f"\n[agent {self._id}] shutting down")
+        self._running = False
 
     def _formation_from_poses(self) -> list:
         pp = self._poses[PAYLOAD_ID]
@@ -125,16 +147,26 @@ class AgentRunner:
         poller.register(self._sub, zmq.POLLIN)
         next_tick = time.monotonic()
 
-        while True:
+        while self._running:
             # Drain incoming messages
-            while dict(poller.poll(timeout=0)):
+            while self._running and dict(poller.poll(timeout=0)):
                 topic_bytes, raw = self._sub.recv_multipart()
                 d = unpack(raw)
                 t = d.get("t")
                 if t == "pose":
-                    self._poses[d["id"]] = d
+                    rid = d["id"]
+                    self._poses[rid] = d
+                    if rid == self._id and not self._got_own_pose:
+                        self._got_own_pose = True
+                        print(f"[agent {self._id}] first own pose received "
+                              f"x={d['x']:.2f} y={d['y']:.2f}")
+                    if rid == PAYLOAD_ID and not self._got_payload_pose:
+                        self._got_payload_pose = True
+                        print(f"[agent {self._id}] first payload pose received "
+                              f"x={d['x']:.2f} y={d['y']:.2f}")
                 elif t == "cmd" and d.get("id") == self._id:
                     self._ros.send_cmd(d["vx"], d["vy"])
+                    self._cmd_count += 1
 
             self._ros.spin_once()
 
@@ -151,9 +183,19 @@ class AgentRunner:
                     pp = self._poses.get(PAYLOAD_ID)
                     all_peers = all(i in self._poses for i in range(self._n_robots))
                     if own is None or pp is None or not all_peers:
+                        if not self._printed_waiting:
+                            missing = ([f"own(id={self._id})"] if own is None else [])
+                            missing += (["payload"] if pp is None else [])
+                            missing += [f"peer {i}" for i in range(self._n_robots)
+                                        if i not in self._poses]
+                            print(f"[agent {self._id}] waiting for: {', '.join(missing)}")
+                            self._printed_waiting = True
                         next_tick += self._dt
                         time.sleep(max(0.0, next_tick - time.monotonic()))
                         continue
+                    if self._printed_waiting:
+                        print(f"[agent {self._id}] all poses received, starting control")
+                        self._printed_waiting = False
 
                     if self.controller is None:
                         from swarmlib.controllers import DRCapDistributedController
@@ -193,6 +235,18 @@ class AgentRunner:
                         forces=None,  # expand once load cell format is finalised
                     )
                     self._ros.send_cmd(float(controls[0, 0]), float(controls[0, 1]))
+
+                now2 = time.monotonic()
+                if now2 - self._last_heartbeat >= 5.0:
+                    self._last_heartbeat = now2
+                    if self._passive:
+                        print(f"[agent {self._id}] heartbeat — cmds forwarded: {self._cmd_count}")
+                        self._cmd_count = 0
+                    else:
+                        own = self._poses.get(self._id, {})
+                        print(f"[agent {self._id}] heartbeat — "
+                              f"pos=({own.get('x', float('nan')):.2f}, {own.get('y', float('nan')):.2f}) "
+                              f"cmd=({controls[0, 0]:.3f}, {controls[0, 1]:.3f})")
 
                 next_tick += self._dt
 

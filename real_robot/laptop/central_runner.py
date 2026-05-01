@@ -69,12 +69,24 @@ class CentralRunner:
         self._payload_pose = None  # (x, y, theta) from mocap when available
         self._forces = np.zeros((n_robots, 3))
 
+        # Diagnostic state
+        self._got_first_pose = np.zeros(n_robots, dtype=bool)
+        self._got_first_payload = False
+        self._printed_waiting = False
+        self._last_heartbeat = 0.0
+
         self.controller = None
         self._controller_cfg = {
             "horizon": horizon,
             "v_max": v_max,
             "estimate_centroid": not use_gt_payload,
         }
+
+        payload_mode = "gt-mocap" if use_gt_payload else "centroid-estimator"
+        goal_mode = "relative" if relative_goal else "absolute"
+        pub_port = cfg['laptop']['central_pub_port']
+        print(f"[central] ready — n_robots={n_robots}, goal={goal} ({goal_mode}), "
+              f"payload={payload_mode}, pub_port={pub_port}")
 
         time.sleep(0.2)
 
@@ -87,6 +99,9 @@ class CentralRunner:
             rid = d.get("id", 0)
             x, y, theta, ts = d["x"], d["y"], d["theta"], d["ts"]
             if rid == PAYLOAD_ID:
+                if not self._got_first_payload:
+                    self._got_first_payload = True
+                    print(f"[central] first payload pose received x={x:.2f} y={y:.2f}")
                 self._payload_pose = (x, y, theta)
             elif 0 <= rid < self._n:
                 prev = self._robot_prev_pose[rid]
@@ -100,6 +115,9 @@ class CentralRunner:
                 self._robot_prev_pose[rid] = [x, y, theta]
                 self._robot_prev_ts[rid] = ts
                 self._got_state[rid] = True
+                if not self._got_first_pose[rid]:
+                    self._got_first_pose[rid] = True
+                    print(f"[central] first pose from robot {rid}: x={x:.2f} y={y:.2f}")
 
     def _formation_from_poses(self, payload_state: np.ndarray) -> list:
         p_c = payload_state[:2]
@@ -136,6 +154,16 @@ class CentralRunner:
                 ready = self._got_state.all() and (
                     not self._use_gt_payload or self._payload_pose is not None
                 )
+                if not ready and not self._printed_waiting:
+                    missing = [f"robot {i}" for i in range(self._n)
+                               if not self._got_state[i]]
+                    if self._use_gt_payload and self._payload_pose is None:
+                        missing.append("payload")
+                    print(f"[central] waiting for: {', '.join(missing)}")
+                    self._printed_waiting = True
+                if ready and self._printed_waiting:
+                    print("[central] all states received, starting control")
+                    self._printed_waiting = False
                 if ready and self._goal_offset is not None:
                     # Resolve relative goal once on the first ready tick.
                     start_x = float(self._robot_states[:self._n, 0].mean())
@@ -164,6 +192,16 @@ class CentralRunner:
                     for i in range(self._n):
                         raw = cmd_msg(i, float(controls[i, 0]), float(controls[i, 1]))
                         self._pub.send_multipart([b"cmd", raw])
+
+                    now2 = time.monotonic()
+                    if now2 - self._last_heartbeat >= 5.0:
+                        self._last_heartbeat = now2
+                        px, py = payload_state[0], payload_state[1]
+                        cmds = " ".join(
+                            f"r{i}=({controls[i,0]:.3f},{controls[i,1]:.3f})"
+                            for i in range(self._n)
+                        )
+                        print(f"[central] heartbeat — payload=({px:.2f},{py:.2f}) {cmds}")
 
                 next_tick += self._dt
 

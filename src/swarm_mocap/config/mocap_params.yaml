@@ -8,4 +8,4 @@ swarm_mocap:
     # These are the IDs assigned by the PhaseSpace software — check the web UI.
     # Must include every ID listed under mocap_rigid_id in network.yaml.
     # Leave commented out (or omit) to publish only /mocap/rigids and /mocap/markers.
-    published_rigid_ids: [0, 1, 2, 3, 4, 5]
+    published_rigid_ids: [-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
