@@ -6,7 +6,7 @@ Real-robot deployment using ZeroMQ for cross-machine comms and ROS1 locally on e
 
 ## Prerequisites
 
-**Laptop** (WSL/Ubuntu 24.04): `pip install pyzmq msgpack pyyaml`. And `pip install rclpy` unless you want to source package from ros2 install.
+**Laptop** (WSL/Ubuntu 24.04): `pip install pyzmq msgpack pyyaml`. No ROS2 required.
 
 **Each myAGV** (Ubuntu 18.04 / ROS1 Melodic):
 ```bash
@@ -24,16 +24,20 @@ All ground-truth poses flow from a single source — the PhaseSpace server — a
 PhaseSpace server
     │  OWL (TCP, mm, PhaseSpace axes)
     ▼
-swarm_mocap (ROS2, laptop)          converts mm→m, swaps axes, publishes
-    │  /mocap/rigid_{phasespace_id}  e.g. rigid_1, rigid_4, rigid_5
-    ▼
-mocap_bridge.py (laptop)            maps PhaseSpace IDs → application IDs
+mocap_pub.py (laptop)               connects via libowlsock directly (no ROS2)
+    │                               converts mm→m, swaps axes
+    │                               maps PhaseSpace IDs → application IDs
     │                               robots: phasespace_id → robot id (0,1,2…)
     │                               payload: phasespace_id → id -1 (sentinel)
     │  ZMQ PUB "pose" {id, x, y, theta}
     ▼
 central_runner / agent_runner       consume by id; robots differentiate
                                     consecutive poses for vx, vy
+```
+
+Build once (from repo root):
+```bash
+cd real_robot/scripts && make && cd -
 ```
 
 PhaseSpace rigid body IDs are defined in the PhaseSpace web UI and mapped to application IDs in `network.yaml` via the `mocap_rigid_id` field on each robot entry and the `payload.mocap_rigid_id` field.
@@ -61,15 +65,16 @@ scp real_robot/config/network.yaml ubuntu@192.168.0.101:/home/ubuntu/network.yam
 
 ### Laptop
 ```bash
-# Terminal 1 — mocap
-source /opt/ros/jazzy/setup.bash && source src/install/setup.bash
-ros2 launch swarm_mocap mocap.launch.py server_ip:=192.168.0.244
+# Terminal 1 — mocap (no ROS2 needed)
+python -m real_robot.scripts.mocap_pub --config real_robot/config/network.yaml --server 192.168.1.25
 
-# Terminal 2 — mocap → ZeroMQ bridge
-python -m real_robot.laptop.mocap_bridge --config real_robot/config/network.yaml
-
-# Terminal 3 — centralised controller (skip for decentralised)
+# Terminal 2 — centralised controller (skip for decentralised)
 python real_robot/laptop/central_runner.py --config real_robot/config/network.yaml --n-robots 2 --goal 5.0 0.0 0.0
+```
+
+To monitor live poses (equivalent to `ros2 topic echo /mocap/rigids`):
+```bash
+python -m real_robot.scripts.mocap_echo
 ```
 
 ### Each myAGV (SSH in)

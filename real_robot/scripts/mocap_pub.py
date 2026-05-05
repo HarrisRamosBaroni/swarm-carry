@@ -11,7 +11,7 @@ Build owl_bridge.so first:
 
 Run:
   python -m real_robot.scripts.mocap_pub --config real_robot/config/network.yaml
-  python -m real_robot.scripts.mocap_pub --config real_robot/config/network.yaml --server 192.168.1.71
+  python -m real_robot.scripts.mocap_pub --config real_robot/config/network.yaml --server 192.168.1.25
 """
 import argparse
 import ctypes
@@ -27,6 +27,7 @@ import zmq
 PAYLOAD_ID = -1
 MAX_RIGIDS = 64
 STRIDE = 9  # floats per rigid: [id, owl_x, owl_y, owl_z, qw, qx, qy, qz, cond]
+STATUS_INTERVAL = 2.0  # seconds between status prints
 
 
 def _load_lib():
@@ -92,6 +93,9 @@ def main():
     if "payload" in cfg:
         id_map[cfg["payload"]["mocap_rigid_id"]] = PAYLOAD_ID
 
+    print(f"Watching PhaseSpace IDs: { {ps: lid for ps, lid in id_map.items()} }")
+    print(f"  (payload logical id = {PAYLOAD_ID})")
+
     lib = _load_lib()
     ret = lib.owl_open(server_ip.encode())
     if ret < 0:
@@ -101,10 +105,16 @@ def main():
     ctx = zmq.Context.instance()
     pub = ctx.socket(zmq.PUB)
     pub.bind(f"tcp://*:{cfg['laptop']['mocap_pub_port']}")
-    print(f"Publishing poses on port {cfg['laptop']['mocap_pub_port']}")
+    print(f"Publishing on tcp://*:{cfg['laptop']['mocap_pub_port']}")
+    print(f"Monitor with:  python -m real_robot.scripts.mocap_echo "
+          f"--port {cfg['laptop']['mocap_pub_port']}\n")
 
     buf = (ctypes.c_float * (MAX_RIGIDS * STRIDE))()
     running = True
+    known_ids = set()       # phasespace IDs seen so far this session
+    frame_count = 0
+    last_status = time.time()
+    active_this_window = set()  # phasespace IDs seen in current status window
 
     def _shutdown(sig, frame):
         nonlocal running
@@ -118,14 +128,39 @@ def main():
         if n < 0:
             print("OWL error event — continuing")
             continue
+        if n > 0:
+            frame_count += 1
+
         for i in range(n):
             ps_id = int(buf[i * STRIDE])
+            active_this_window.add(ps_id)
+
+            if ps_id not in known_ids:
+                known_ids.add(ps_id)
+                label = f"logical {id_map[ps_id]}" if ps_id in id_map else "not in config"
+                print(f"  [new] PhaseSpace rigid {ps_id} detected ({label})")
+
             if ps_id not in id_map:
                 continue
             p = buf[i * STRIDE + 1: i * STRIDE + 8]
             x, y, qw, qx, qy, qz = _owl_to_ros(p)
             theta = _yaw(qw, qx, qy, qz)
             pub.send_multipart([b"pose", _pose_msg(id_map[ps_id], x, y, theta)])
+
+        now = time.time()
+        if now - last_status >= STATUS_INTERVAL:
+            fps = frame_count / (now - last_status)
+            if active_this_window:
+                ids_str = ", ".join(
+                    f"{ps}→{id_map[ps]}" if ps in id_map else str(ps)
+                    for ps in sorted(active_this_window)
+                )
+            else:
+                ids_str = "none"
+            print(f"[{fps:.1f} Hz]  active rigids: {ids_str}")
+            frame_count = 0
+            last_status = now
+            active_this_window.clear()
 
     lib.owl_close()
     print("Shutdown.")

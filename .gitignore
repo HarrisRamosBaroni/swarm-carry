@@ -23,6 +23,7 @@ src/examples/
 **/build
 **/install
 **/log
+real_robot/scripts/**.so
 
 experiments/mrcap_fg/results.json
 swarmlib/sensors/force/config.yaml
