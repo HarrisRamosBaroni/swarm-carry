@@ -20,6 +20,8 @@ TEAM: swap MRCapController for any other centralised controller that follows
 the BaseController.compute_control(payload, robots, goal, dt, forces) API.
 """
 import argparse
+import subprocess
+import sys
 import time
 
 import yaml
@@ -40,12 +42,14 @@ class CentralRunner:
                  horizon: int = 15,
                  v_max: float = 0.25,
                  use_gt_payload: bool = False,
-                 relative_goal: bool = False):
+                 relative_goal: bool = False,
+                 goal_tol: float = 0.15):
         self._n = n_robots
         self._goal = goal          # absolute if not relative_goal; offset if relative_goal
         self._goal_offset = goal if relative_goal else None  # resolved on first tick
         self._dt = 1.0 / control_hz
         self._use_gt_payload = use_gt_payload
+        self._goal_tol = goal_tol
 
         cfg = network_config
         ctx = zmq.Context.instance()
@@ -141,71 +145,93 @@ class CentralRunner:
         y = float(self._robot_states[:self._n, 1].mean())
         return np.array([x, y, 0.0, 0.0, 0.0, 0.0])
 
+    def _send_zeros(self):
+        for i in range(self._n):
+            self._pub.send_multipart([b"cmd", cmd_msg(i, 0.0, 0.0)])
+        print("[central] zero-velocity commands sent.")
+
     def run(self):
         poller = zmq.Poller()
         poller.register(self._sub, zmq.POLLIN)
         next_tick = time.monotonic()
 
-        while True:
-            self._drain(poller)
+        try:
+            while True:
+                self._drain(poller)
 
-            now = time.monotonic()
-            if now >= next_tick:
-                ready = self._got_state.all() and (
-                    not self._use_gt_payload or self._payload_pose is not None
-                )
-                if not ready and not self._printed_waiting:
-                    missing = [f"robot {i}" for i in range(self._n)
-                               if not self._got_state[i]]
-                    if self._use_gt_payload and self._payload_pose is None:
-                        missing.append("payload")
-                    print(f"[central] waiting for: {', '.join(missing)}")
-                    self._printed_waiting = True
-                if ready and self._printed_waiting:
-                    print("[central] all states received, starting control")
-                    self._printed_waiting = False
-                if ready and self._goal_offset is not None:
-                    # Resolve relative goal once on the first ready tick.
-                    start_x = float(self._robot_states[:self._n, 0].mean())
-                    start_y = float(self._robot_states[:self._n, 1].mean())
-                    self._goal = self._goal_offset + np.array([start_x, start_y, 0.0])
-                    print(f"[central] relative goal resolved to {self._goal}")
-                    self._goal_offset = None
-                if ready:
-                    payload_state = self._build_payload_state()
-                    if self.controller is None:
-                        formation = self._formation_from_poses(payload_state)
-                        print(f"[central] formation calibrated from mocap: {formation}")
-                        self.controller = MRCapController(
-                            num_robots=self._n,
-                            formation=formation,
-                            config=self._controller_cfg,
-                        )
-                        self.controller.reset()
-                    controls = self.controller.compute_control(
-                        payload_state=payload_state,
-                        robot_states=self._robot_states,
-                        goal_state=self._goal,
-                        dt=self._dt,
-                        forces=self._forces,
+                now = time.monotonic()
+                if now >= next_tick:
+                    ready = self._got_state.all() and (
+                        not self._use_gt_payload or self._payload_pose is not None
                     )
-                    for i in range(self._n):
-                        raw = cmd_msg(i, float(controls[i, 0]), float(controls[i, 1]))
-                        self._pub.send_multipart([b"cmd", raw])
-
-                    now2 = time.monotonic()
-                    if now2 - self._last_heartbeat >= 5.0:
-                        self._last_heartbeat = now2
-                        px, py = payload_state[0], payload_state[1]
-                        cmds = " ".join(
-                            f"r{i}=({controls[i,0]:.3f},{controls[i,1]:.3f})"
-                            for i in range(self._n)
+                    if not ready and not self._printed_waiting:
+                        missing = [f"robot {i}" for i in range(self._n)
+                                   if not self._got_state[i]]
+                        if self._use_gt_payload and self._payload_pose is None:
+                            missing.append("payload")
+                        print(f"[central] waiting for: {', '.join(missing)}")
+                        self._printed_waiting = True
+                    if ready and self._printed_waiting:
+                        print("[central] all states received, starting control")
+                        self._printed_waiting = False
+                    if ready and self._goal_offset is not None:
+                        # Resolve relative goal once on the first ready tick.
+                        start_x = float(self._robot_states[:self._n, 0].mean())
+                        start_y = float(self._robot_states[:self._n, 1].mean())
+                        self._goal = self._goal_offset + np.array([start_x, start_y, 0.0])
+                        print(f"[central] relative goal resolved to {self._goal}")
+                        self._goal_offset = None
+                    if ready:
+                        payload_state = self._build_payload_state()
+                        dist = float(np.linalg.norm(payload_state[:2] - self._goal[:2]))
+                        if dist < self._goal_tol:
+                            print(f"[central] GOAL REACHED — dist={dist*100:.1f} cm < "
+                                  f"{self._goal_tol*100:.0f} cm threshold")
+                            self._send_zeros()
+                            return
+                        if self.controller is None:
+                            formation = self._formation_from_poses(payload_state)
+                            print(f"[central] formation calibrated from mocap: {formation}")
+                            self.controller = MRCapController(
+                                num_robots=self._n,
+                                formation=formation,
+                                config=self._controller_cfg,
+                            )
+                            self.controller.reset()
+                        controls = self.controller.compute_control(
+                            payload_state=payload_state,
+                            robot_states=self._robot_states,
+                            goal_state=self._goal,
+                            dt=self._dt,
+                            forces=self._forces,
                         )
-                        print(f"[central] heartbeat — payload=({px:.2f},{py:.2f}) {cmds}")
+                        for i in range(self._n):
+                            theta = self._robot_states[i, 2]
+                            c, s = np.cos(theta), np.sin(theta)
+                            vx_w, vy_w = float(controls[i, 0]), float(controls[i, 1])
+                            vx_b =  c * vx_w + s * vy_w
+                            vy_b = -s * vx_w + c * vy_w
+                            raw = cmd_msg(i, vx_b, vy_b)
+                            self._pub.send_multipart([b"cmd", raw])
 
-                next_tick += self._dt
+                        now2 = time.monotonic()
+                        if now2 - self._last_heartbeat >= 5.0:
+                            self._last_heartbeat = now2
+                            px, py = payload_state[0], payload_state[1]
+                            cmds = " ".join(
+                                f"r{i}=({controls[i,0]:.3f},{controls[i,1]:.3f})"
+                                for i in range(self._n)
+                            )
+                            print(f"[central] heartbeat — payload=({px:.2f},{py:.2f}) "
+                                  f"dist={dist*100:.1f} cm {cmds}")
 
-            time.sleep(max(0.0, next_tick - time.monotonic()))
+                    next_tick += self._dt
+
+                time.sleep(max(0.0, next_tick - time.monotonic()))
+
+        except KeyboardInterrupt:
+            print("\n[central] interrupted — sending zero velocities.")
+            self._send_zeros()
 
 
 def main():
@@ -224,10 +250,28 @@ def main():
     parser.add_argument("--relative-goal", action="store_true",
                         help="Treat --goal as an offset from the robots' initial "
                              "centroid position rather than an absolute world-frame target.")
+    parser.add_argument("--goal-tol", type=float, default=0.15,
+                        help="Stop when payload is within this distance (metres) of the goal. "
+                             "Default: 0.15 m.")
+    parser.add_argument("--viewer", action="store_true",
+                        help="Launch live_viewer.py in a subprocess alongside the controller.")
     args = parser.parse_args()
 
     with open(args.config) as f:
         cfg = yaml.safe_load(f)
+
+    if args.viewer:
+        viewer_cmd = [
+            sys.executable,
+            "real_robot/laptop/live_viewer.py",
+            "--config", args.config,
+            "--n-robots", str(args.n_robots),
+            "--goal-tol", str(args.goal_tol),
+        ]
+        if args.goal:
+            viewer_cmd += ["--goal"] + [str(v) for v in args.goal]
+        subprocess.Popen(viewer_cmd)
+        print("[central] live viewer launched")
 
     runner = CentralRunner(
         cfg, args.n_robots, np.array(args.goal),
@@ -236,6 +280,7 @@ def main():
         v_max=args.v_max,
         use_gt_payload=args.gt_payload,
         relative_goal=args.relative_goal,
+        goal_tol=args.goal_tol,
     )
     runner.run()
 

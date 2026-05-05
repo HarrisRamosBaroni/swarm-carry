@@ -19,6 +19,7 @@ src/examples/
 .venv
 **/my_temp
 .notes
+.findings
 **/build
 **/install
 **/log
