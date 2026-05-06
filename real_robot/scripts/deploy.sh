@@ -10,6 +10,7 @@
 #   --yaml                scp network.yaml to each robot
 #   --pull                git pull on each robot
 #   --launch              start (or restart) the tmux session on each robot
+#   --reload              shorthand for --yaml --launch (yaml changed, no pull needed)
 #   --all                 shorthand for --yaml --pull --launch
 #
 # Extra agent args appended after mode-derived args:
@@ -42,6 +43,7 @@ while [[ $# -gt 0 ]]; do
     --yaml)   DO_YAML=true; shift ;;
     --pull)   DO_PULL=true; shift ;;
     --launch) DO_LAUNCH=true; shift ;;
+    --reload) DO_YAML=true; DO_LAUNCH=true; shift ;;
     --all)    DO_YAML=true; DO_PULL=true; DO_LAUNCH=true; shift ;;
     *) echo "unknown arg: $1"; exit 1 ;;
   esac
@@ -109,7 +111,7 @@ for i in "${!ROBOT_IDS[@]}"; do
       tmux kill-session -t $TMUX_SESSION 2>/dev/null || true
       tmux new-session -d -s $TMUX_SESSION -n ros
       tmux send-keys -t $TMUX_SESSION:ros \
-        'source /opt/ros/noetic/setup.bash && roslaunch myagv_ros myagv_active.launch' Enter
+        'source /home/ubuntu/myagv_ros/devel/setup.bash && roslaunch myagv_odometry myagv_active.launch' Enter
       tmux new-window -t $TMUX_SESSION -n agent
       tmux send-keys -t $TMUX_SESSION:agent \
         'cd $REMOTE_REPO && sudo PYTHONPATH=\$PYTHONPATH python3 -m real_robot.robot.agent_runner --config $REMOTE_CONFIG --id $ID $ROBOT_ARGS' Enter
