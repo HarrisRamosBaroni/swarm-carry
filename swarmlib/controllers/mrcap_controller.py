@@ -182,7 +182,7 @@ class MRCapController(BaseController):
         U_c = self._solve_fg(centroid, goal, dt)
         self._set_solve_time(time.perf_counter() - t0)
 
-        return self._robot_velocities(U_c)
+        return self._robot_velocities(U_c, centroid[2])
 
     # ------------------------------------------------------------------
     # Factor graph solve
@@ -248,17 +248,21 @@ class MRCapController(BaseController):
     # Rigid-body velocity distribution
     # ------------------------------------------------------------------
 
-    def _robot_velocities(self, U_c: np.ndarray) -> np.ndarray:
+    def _robot_velocities(self, U_c: np.ndarray, theta: float) -> np.ndarray:
         """
         Derive per-robot [vx, vy] from centroid control U_c = [vx_c, vy_c, omega_c].
 
         Holonomic rigid-body kinematics:
           v_ix = vx_c - omega_c * r_iy
           v_iy = vy_c + omega_c * r_ix
+        where r_i must be in world frame. self._r stores body-frame offsets,
+        so rotate by current payload heading theta first.
         Then clamp individual robot speeds to v_max.
         """
         vx_c, vy_c, omega_c = U_c
-        r = self._r                            # (n, 2)
+        c, s = np.cos(theta), np.sin(theta)
+        R = np.array([[c, -s], [s, c]])
+        r = self._r @ R.T                      # body-frame → world-frame, (n, 2)
         vx = vx_c - omega_c * r[:, 1]
         vy = vy_c + omega_c * r[:, 0]
 
