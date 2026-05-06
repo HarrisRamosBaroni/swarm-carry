@@ -4,6 +4,10 @@ log/*
 site/*
 src/examples/
 **/__pycache__
+bin
+lib
+lib64
+pyvenv.cfg
 
 # VSCode settings (personal preference)
 .vscode/
@@ -24,6 +28,8 @@ src/examples/
 **/install
 **/log
 real_robot/scripts/**.so
+.myvenv
+*venv
 
 experiments/mrcap_fg/results.json
 swarmlib/sensors/force/config.yaml
