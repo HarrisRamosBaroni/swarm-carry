@@ -63,33 +63,36 @@ scp real_robot/config/network.yaml ubuntu@192.168.0.101:/home/ubuntu/network.yam
 
 ## Run order
 
-### Laptop
-```bash
-# Terminal 1 — mocap (no ROS2 needed)
-python -m real_robot.scripts.mocap_pub --config real_robot/config/network.yaml --server 192.168.1.25
+Two scripts handle the full launch. Run both from the repo root.
 
-# Terminal 2 — centralised controller (skip for decentralised)
-python real_robot/laptop/central_runner.py --config real_robot/config/network.yaml --n-robots 2 --goal 5.0 0.0 0.0
+**Robots** (`deploy.sh` — handles yaml sync, git pull, tmux sessions on each robot):
+```bash
+# centralised: robots are passive, central_runner drives them
+./real_robot/scripts/deploy.sh --mode central --all
+
+# decentralised: robots self-drive; --neighbors computed automatically per robot
+./real_robot/scripts/deploy.sh --mode decentralised --all
 ```
 
-To monitor live poses (equivalent to `ros2 topic echo /mocap/rigids`):
+Flags can be combined freely: `--yaml`, `--pull`, `--launch` (or `--all`). Extra agent args append via env: `AGENT_EXTRA_ARGS="--gbp-async" ./deploy.sh --mode decentralised --launch`.
+
+**Laptop** (`launch.sh` — opens a local tmux session `swarm-laptop`):
 ```bash
-python -m real_robot.scripts.mocap_echo
+# centralised: mocap window + controller window
+./real_robot/scripts/launch.sh --mode central --goal 2 0 0
+
+# decentralised: mocap window only
+./real_robot/scripts/launch.sh --mode decentralised
 ```
 
-### Each myAGV (SSH in)
-```bash
-# Terminal 1 — local ROS1 stack
-roslaunch myagv_ros myagv_active.launch
+Attach anytime: `tmux attach -t swarm-laptop`. Kill: `tmux kill-session -t swarm-laptop`.
 
-# Terminal 2 — agent
-python real_robot/robot/agent_runner.py \
-    --config /home/ubuntu/network.yaml \
-    --id 0 \
-    --neighbors 1 \
-    --goal 5.0 0.0 0.0
+Central-mode options: `--n-robots N`, `--gt-payload`, `--relative-goal`, `--viewer`, `--server IP`.
+
+To monitor live poses:
+```bash
+python3 -m real_robot.scripts.mocap_echo
 ```
-Change `--id` and `--neighbors` per robot. For decentralised mode the laptop terminal 3 is not needed.
 
 ---
 

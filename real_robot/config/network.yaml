@@ -3,18 +3,18 @@ robots:
   #   ip: "192.168.1.102"   # fill in actual IPs
   #   pub_port: 5550
   #   mocap_rigid_id: 1     # PhaseSpace rigid body ID for this robot
-  - id: 1
-    ip: "192.168.1.115"
-    pub_port: 5550
-    mocap_rigid_id: 2
+  # - id: 0
+    # ip: "192.168.1.115" # dotmyagv2.local
+    # pub_port: 5550
+    # mocap_rigid_id: 2
   - id: 0
-    ip: "192.168.1.121"
+    ip: "192.168.1.121"  # dotmyagv3.local
     pub_port: 5557
-    mocap_rigid_id: 3
-  # - id: 3
-  #   ip: "192.168.1.122"
-  #   pub_port: 5553
-  #   mocap_rigid_id: 4     # PhaseSpace rigid body ID for this robot
+    mocap_rigid_id: 2
+  - id: 1
+    ip: "192.168.1.122"  # dotmyagv4.local
+    pub_port: 5553
+    mocap_rigid_id: 5     # PhaseSpace rigid body ID for this robot
 
 laptop:
   ip: "192.168.1.55"     # fill in actual IP
@@ -25,5 +25,5 @@ control:
   frequency_hz: 20        # start conservative; increase after validation
 
 payload:
-  mocap_rigid_id: 5       # PhaseSpace rigid body ID for the payload
+  mocap_rigid_id: 3       # PhaseSpace rigid body ID for the payload
 
