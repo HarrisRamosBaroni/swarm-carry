@@ -35,14 +35,17 @@ PAYLOAD_ID = -1
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--config", default="real_robot/config/network.yaml")
-    parser.add_argument("--n-robots", type=int, default=2)
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument("--config", default="real_robot/config/network.yaml",
+                        help="Path to network.yaml")
+    parser.add_argument("--n-robots", type=int, default=2,
+                        help="Number of robots to control")
     parser.add_argument("--kp", type=float, default=1.0,
                         help="Proportional gain (world-frame position error → velocity)")
     parser.add_argument("--v-max", type=float, default=0.15,
                         help="Max velocity magnitude (m/s)")
-    parser.add_argument("--hz", type=float, default=20.0)
+    parser.add_argument("--hz", type=float, default=20.0,
+                        help="Control loop rate (Hz)")
     parser.add_argument("--duration", type=float, default=None,
                         help="Run for this many seconds (default: until Ctrl+C)")
     parser.add_argument("--verbose", action="store_true",
