@@ -178,7 +178,10 @@ class CentralRunner:
                         # Resolve relative goal once on the first ready tick.
                         start_x = float(self._robot_states[:self._n, 0].mean())
                         start_y = float(self._robot_states[:self._n, 1].mean())
-                        self._goal = self._goal_offset + np.array([start_x, start_y, 0.0])
+                        start_theta = float(self._payload_pose[2]) if (
+                            self._use_gt_payload and self._payload_pose is not None
+                        ) else 0.0
+                        self._goal = self._goal_offset + np.array([start_x, start_y, start_theta])
                         print(f"[central] relative goal resolved to {self._goal}")
                         self._goal_offset = None
                     if ready:
