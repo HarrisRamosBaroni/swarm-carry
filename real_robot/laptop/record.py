@@ -49,6 +49,9 @@ def build_endpoints(config):
 
 
 def main():
+    last_logged = {}
+    POSE_INTERVAL = 1.0 / 50.0  # 50 Hz limit for pose recordings 
+
     config = load_config(CONFIG_FILE)
     endpoints = build_endpoints(config)
 
@@ -102,6 +105,7 @@ def main():
 
                     msg_parts = socket.recv_multipart()
                     timestamp = datetime.utcnow().isoformat()
+                    now = time.time()
 
                     topic = None
                     data = None
@@ -134,6 +138,16 @@ def main():
                     except Exception as e:
                         topic = "error"
                         data = str(e)
+
+                    # ✅ Throttle pose messages
+                    if topic == "pose":
+                        last_time = last_logged.get(topic, 0)
+
+                        if now - last_time < POSE_INTERVAL:
+                            continue  # skip this message
+
+                        last_logged[topic] = now
+
 
                     writer.writerow([timestamp, topic, data])
                     f.flush()
