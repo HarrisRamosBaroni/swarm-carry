@@ -325,7 +325,7 @@ def main():
         neighbor_ids=args.neighbors,
         network_config=cfg,
         goal=np.array(args.goal) if args.goal is not None else None,
-        n_robots=args.n_robots,
+        n_robots=args.n_robots if args.n_robots > 1 else len(cfg["robots"]),
         control_hz=args.control_hz,
         gbp_async=args.gbp_async,
         gbp_max_iters=args.gbp_max_iters,
