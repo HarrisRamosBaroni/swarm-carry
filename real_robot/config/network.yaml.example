@@ -1,7 +1,7 @@
 robots:
   - id: 0
     ip: "192.168.1.102"   # fill in actual IPs
-    pub_port: 5550
+    pub_port: 5551
     mocap_rigid_id: 1     # PhaseSpace rigid body ID for this robot
   # - id: 0
   #   ip: "192.168.1.115" # dotmyagv2.local

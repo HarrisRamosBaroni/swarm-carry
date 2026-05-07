@@ -91,7 +91,7 @@ tmux new-session -d -s "$TMUX_SESSION" -n mocap
 tmux send-keys -t "$TMUX_SESSION:mocap" "$MOCAP_CMD" Enter
 
 if [[ "$MODE" == "central" ]]; then
-  CTRL_CMD="$PYTHON real_robot/laptop/central_runner.py --config $CONFIG --n-robots $N_ROBOTS"
+  CTRL_CMD="$PYTHON -m real_robot.laptop.central_runner --config $CONFIG --n-robots $N_ROBOTS"
   if [[ -n "$GOAL" ]];    then CTRL_CMD="$CTRL_CMD --goal $GOAL";     fi
   if $GT_PAYLOAD;         then CTRL_CMD="$CTRL_CMD --gt-payload";      fi
   if $RELATIVE_GOAL;      then CTRL_CMD="$CTRL_CMD --relative-goal";   fi
