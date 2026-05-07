@@ -143,6 +143,7 @@ class AgentRunner:
         signal.signal(signal.SIGINT, self._handle_sigint)
         signal.signal(signal.SIGTERM, self._handle_sigint)
 
+        my_port = next(r["pub_port"] for r in cfg["robots"] if r["id"] == robot_id)
         laptop_ip = cfg['laptop']['ip']
         mode = "passive" if passive else "active"
         print(f"[agent {robot_id}] ready — mode={mode}, pub_port={my_port}, "
