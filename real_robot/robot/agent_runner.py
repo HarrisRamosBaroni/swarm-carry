@@ -71,10 +71,20 @@ class AgentRunner:
         cfg = network_config
         ctx = zmq.Context.instance()
 
-        # PUB: broadcast our state + force to laptop and peers
-        my_port = next(r["pub_port"] for r in cfg["robots"] if r["id"] == robot_id)
-        self._pub = ctx.socket(zmq.PUB)
-        self._pub.bind(f"tcp://*:{my_port}")
+        # GBP backend binds our PUB port; in passive mode we bind it directly.
+        self.backend = None
+        if not passive:
+            self.backend = ZeroMQSingleAgentBackend(
+                my_id=robot_id,
+                neighbors=neighbor_ids,
+                network_config=cfg,
+                synchronous=not gbp_async,
+            )
+            self._pub = self.backend._pub  # reuse — one socket, one bound port
+        else:
+            my_port = next(r["pub_port"] for r in cfg["robots"] if r["id"] == robot_id)
+            self._pub = ctx.socket(zmq.PUB)
+            self._pub.bind(f"tcp://*:{my_port}")
 
         # SUB: mocap poses + commands + goal updates from laptop
         self._sub = ctx.socket(zmq.SUB)
@@ -93,18 +103,6 @@ class AgentRunner:
                 nport = next(r["pub_port"] for r in cfg["robots"] if r["id"] == nid)
                 self._sub.connect(f"tcp://{nip}:{nport}")
                 self._sub.setsockopt_string(zmq.SUBSCRIBE, "force")
-
-        # GBP backend — only needed for the decentralised controller. In
-        # passive mode the laptop is the brain; we just publish state and
-        # forward cmd → cmd_vel.
-        self.backend = None
-        if not passive:
-            self.backend = ZeroMQSingleAgentBackend(
-                my_id=robot_id,
-                neighbors=neighbor_ids,
-                network_config=cfg,
-                synchronous=not gbp_async,
-            )
 
         # Local ROS1 bridge (cmd_vel only — poses come from mocap)
         self._ros = ROS1Bridge(node_name=f"swarm_agent_{robot_id}")

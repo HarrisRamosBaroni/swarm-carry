@@ -102,7 +102,7 @@ for i in "${!ROBOT_IDS[@]}"; do
 
   if $DO_STOP; then
     echo "    [stop] killing tmux session '$TMUX_SESSION'"
-    ssh "$REMOTE_USER@$IP" "tmux kill-session -t $TMUX_SESSION 2>/dev/null && echo stopped || echo not running"
+    ssh "$REMOTE_USER@$IP" "tmux kill-session -t $TMUX_SESSION 2>/dev/null && echo stopped || echo not running; sudo -n pkill -f 'real_robot.robot.agent_runner' 2>/dev/null || true"
   fi
 
   if $DO_YAML; then
@@ -119,6 +119,8 @@ for i in "${!ROBOT_IDS[@]}"; do
     echo "    [launch] starting tmux session '$TMUX_SESSION' (agent args: $ROBOT_ARGS)"
     ssh "$REMOTE_USER@$IP" bash << EOF
       tmux kill-session -t $TMUX_SESSION 2>/dev/null || true
+      sudo -n pkill -f 'real_robot.robot.agent_runner' 2>/dev/null || true
+      sleep 0.5
       tmux new-session -d -s $TMUX_SESSION -n ros
       tmux send-keys -t $TMUX_SESSION:ros \
         'source /home/ubuntu/myagv_ros/devel/setup.bash && roslaunch myagv_odometry myagv_active.launch' Enter
