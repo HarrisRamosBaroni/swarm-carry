@@ -54,11 +54,6 @@ python swarmlib/sensors/force/calibrate_vals.py
 ```
 Copy the printed `zeroOffset` / `calFactor` values into a `config.yaml` (see `swarmlib/sensors/force/config.yaml.example`). Put that file somewhere accessible on the robot, e.g. `/home/ubuntu/force_config.yaml`.
 
-**3. Copy network config to each robot:**
-```bash
-scp real_robot/config/network.yaml ubuntu@192.168.0.101:/home/ubuntu/network.yaml
-```
-
 ---
 
 ## Run order
@@ -74,7 +69,7 @@ Two scripts handle the full launch. Run both from the repo root.
 ./real_robot/scripts/deploy.sh --mode decentralised --all
 ```
 
-Flags can be combined freely: `--yaml`, `--pull`, `--launch` (or `--all`). Extra agent args append via env: `AGENT_EXTRA_ARGS="--gbp-async" ./deploy.sh --mode decentralised --launch`.
+Flags can be combined freely: `--yaml` (scp `network.yaml` to all robots), `--pull`, `--launch` (or `--all`). Extra agent args append via env: `AGENT_EXTRA_ARGS="--gbp-async" ./deploy.sh --mode decentralised --launch`.
 
 **Laptop** (`launch.sh` — opens a local tmux session `swarm-laptop`):
 ```bash
