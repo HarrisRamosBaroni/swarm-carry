@@ -78,21 +78,23 @@ Flags can be combined freely: `--yaml`, `--pull`, `--launch` (or `--all`). Extra
 
 **Laptop** (`launch.sh` — opens a local tmux session `swarm-laptop`):
 ```bash
-# centralised: mocap + controller + goal_setter windows
+# centralised: mocap + controller + control_panel windows
 ./real_robot/scripts/launch.sh --mode central --goal 2 0 0
 
-# decentralised: mocap + goal_setter windows
+# decentralised: mocap + control_panel windows
 ./real_robot/scripts/launch.sh --mode decentralised
 
-# skip goal_setter if you want to set goals only via --goal / --relative-goal
-./real_robot/scripts/launch.sh --mode central --goal 2 0 0 --no-goal-setter
+# skip control_panel if you want to set goals only via --goal / --relative-goal
+./real_robot/scripts/launch.sh --mode central --goal 2 0 0 --no-control-panel
 ```
 
 Attach anytime: `tmux attach -t swarm-laptop`. Kill: `tmux kill-session -t swarm-laptop`.
 
+`--goal X Y theta` pre-loads an initial goal so the controller starts moving immediately on launch. Omit it to hold at zero until you hit **Send Goal** in the control panel. The control panel always opens regardless — `--goal` just skips the waiting phase.
+
 Central-mode options: `--n-robots N`, `--gt-payload`, `--relative-goal`, `--server IP`.
 
-**Goal setter** (`goal_setter.py`) opens by default in the `goal_setter` tmux window. Left-click the map or use sliders to place a goal, then hit **Send Goal** to publish it live — `central_runner` and all `agent_runner`s pick it up without restart. **Stop Robots** broadcasts an emergency-stop (`estop`) over ZMQ; all runners (centralised and decentralised) send zero velocities and exit immediately.
+**Control panel** (`control_panel.py`) opens by default in the `control_panel` tmux window. Left-click the map or use sliders to place a goal, then hit **Send Goal** to publish it live — `central_runner` and all `agent_runner`s pick it up without restart. **Stop Robots** broadcasts an emergency-stop (`estop`) over ZMQ; all runners (centralised and decentralised) send zero velocities and exit immediately.
 
 To monitor live poses:
 ```bash

@@ -199,7 +199,7 @@ class AgentRunner:
                         if not self._printed_waiting:
                             missing = []
                             if self._goal is None:
-                                missing.append("goal (press Send Goal in goal_setter)")
+                                missing.append("goal (press Send Goal in control_panel)")
                             missing += ([f"own(id={self._id})"] if own is None else [])
                             missing += (["payload"] if pp is None else [])
                             missing += [f"peer {i}" for i in range(self._n_robots)
@@ -276,7 +276,7 @@ def main():
     parser.add_argument("--neighbors", type=int, nargs="*", default=[])
     parser.add_argument("--goal", type=float, nargs=3, default=None,
                         help="Initial goal (x y theta in m/rad). Omit to hold until "
-                             "goal_setter sends the first goal.")
+                             "control_panel sends the first goal.")
     parser.add_argument("--n-robots", type=int, default=1,
                         help="Total robots in formation. Required for decentralised "
                              "mode; ignored in --passive mode.")

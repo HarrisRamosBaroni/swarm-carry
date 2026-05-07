@@ -1,14 +1,14 @@
 """
-Goal setter — live pose viewer with interactive goal placement and ZMQ publishing.
+Control panel — live pose viewer with interactive goal placement and ZMQ publishing.
 
 Left-click on the map to place the goal XY. Use sliders to fine-tune X, Y, θ,
 and tolerance. Hit "Send Goal" to publish the goal over ZMQ — central_runner and
 agent_runners pick it up without restarting.
 
-"Stop Robots" sends a goal at the current payload position with a 1 m tolerance,
-causing the controller to declare "reached" and halt.
+"Stop Robots" broadcasts an emergency-stop (estop) over ZMQ; all runners send
+zero velocities and exit immediately.
 
-python real_robot/laptop/goal_setter.py \
+python real_robot/laptop/control_panel.py \
     --config real_robot/config/network.yaml \
     --n-robots 2
 """
@@ -211,13 +211,13 @@ def main():
         pub.send_multipart([b"goal", goal_msg(gx, gy, gth, gtol)])
         _goal["sent"] = True
         sent_text.set_text(f"last sent: ({gx:.2f}, {gy:.2f}, {gth:.2f} rad) tol={gtol:.2f} m")
-        print(f"[goal_setter] sent x={gx:.3f} y={gy:.3f} theta={gth:.3f} tol={gtol:.3f}")
+        print(f"[control_panel] sent x={gx:.3f} y={gy:.3f} theta={gth:.3f} tol={gtol:.3f}")
         _refresh_marker()
         fig.canvas.draw_idle()
 
     def _stop(_event=None):
         pub.send_multipart([b"estop", estop_msg()])
-        print("[goal_setter] ESTOP sent")
+        print("[control_panel] ESTOP sent")
         sent_text.set_text("ESTOP sent")
         fig.canvas.draw_idle()
 

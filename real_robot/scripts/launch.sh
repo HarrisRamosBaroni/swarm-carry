@@ -7,23 +7,23 @@
 #   ./real_robot/scripts/launch.sh --mode decentralised
 #
 # central:       tmux session "swarm-laptop" with three windows:
-#                  mocap        — mocap_pub streaming poses from PhaseSpace
-#                  controller   — central_runner sending commands to all robots
-#                  goal_setter  — interactive map for live goal setting and E-stop
+#                  mocap          — mocap_pub streaming poses from PhaseSpace
+#                  controller     — central_runner sending commands to all robots
+#                  control_panel  — live map, goal placement, and E-stop
 # decentralised: tmux session "swarm-laptop" with two windows:
-#                  mocap        — mocap_pub only (robots self-drive)
-#                  goal_setter  — interactive map for live goal setting and E-stop
+#                  mocap          — mocap_pub only (robots self-drive)
+#                  control_panel  — live map, goal placement, and E-stop
 #
 # Options:
 #   --mode central|decentralised   (required)
 #   --goal X Y theta               pre-set initial goal in metres/rad (central only);
-#                                  omit to hold until goal_setter sends the first goal
+#                                  omit to hold until control_panel sends the first goal
 #   --n-robots N                   number of robots (default: from network.yaml)
 #   --server IP                    PhaseSpace server IP (default: 192.168.1.25)
 #   --config PATH                  network.yaml path (default: real_robot/config/network.yaml)
 #   --gt-payload                   use live mocap payload pose (central only)
 #   --relative-goal                treat --goal as offset from initial centroid (central only)
-#   --no-goal-setter               skip the goal_setter window (e.g. if setting goal via CLI)
+#   --no-control-panel             skip the control_panel window (e.g. if setting goal via CLI)
 #
 # Attach: tmux attach -t swarm-laptop
 # Kill:   tmux kill-session -t swarm-laptop
@@ -40,18 +40,18 @@ GOAL=""
 N_ROBOTS=""
 GT_PAYLOAD=false
 RELATIVE_GOAL=false
-GOAL_SETTER=true
+CONTROL_PANEL=true
 
 while [[ $# -gt 0 ]]; do
   case $1 in
-    --mode)           MODE="$2"; shift 2 ;;
-    --goal)           GOAL="$2 $3 $4"; shift 4 ;;
-    --n-robots)       N_ROBOTS="$2"; shift 2 ;;
-    --server)         MOCAP_SERVER="$2"; shift 2 ;;
-    --config)         CONFIG="$2"; shift 2 ;;
-    --gt-payload)     GT_PAYLOAD=true; shift ;;
-    --relative-goal)  RELATIVE_GOAL=true; shift ;;
-    --no-goal-setter) GOAL_SETTER=false; shift ;;
+    --mode)              MODE="$2"; shift 2 ;;
+    --goal)              GOAL="$2 $3 $4"; shift 4 ;;
+    --n-robots)          N_ROBOTS="$2"; shift 2 ;;
+    --server)            MOCAP_SERVER="$2"; shift 2 ;;
+    --config)            CONFIG="$2"; shift 2 ;;
+    --gt-payload)        GT_PAYLOAD=true; shift ;;
+    --relative-goal)     RELATIVE_GOAL=true; shift ;;
+    --no-control-panel)  CONTROL_PANEL=false; shift ;;
     *) echo "unknown arg: $1"; exit 1 ;;
   esac
 done
@@ -97,10 +97,10 @@ if [[ "$MODE" == "central" ]]; then
   tmux select-window -t "$TMUX_SESSION:mocap"
 fi
 
-if $GOAL_SETTER; then
-  GS_CMD="$PYTHON -m real_robot.laptop.goal_setter --config $CONFIG --n-robots $N_ROBOTS"
-  tmux new-window -t "$TMUX_SESSION" -n goal_setter
-  tmux send-keys -t "$TMUX_SESSION:goal_setter" "$GS_CMD" Enter
+if $CONTROL_PANEL; then
+  CP_CMD="$PYTHON -m real_robot.laptop.control_panel --config $CONFIG --n-robots $N_ROBOTS"
+  tmux new-window -t "$TMUX_SESSION" -n control_panel
+  tmux send-keys -t "$TMUX_SESSION:control_panel" "$CP_CMD" Enter
   tmux select-window -t "$TMUX_SESSION:mocap"
 fi
 
@@ -110,8 +110,8 @@ echo "  mocap: $MOCAP_CMD"
 if [[ "$MODE" == "central" ]]; then
   echo "  controller: $CTRL_CMD"
 fi
-if $GOAL_SETTER; then
-  echo "  goal_setter: $GS_CMD"
+if $CONTROL_PANEL; then
+  echo "  control_panel: $CP_CMD"
 fi
 echo ""
 echo "Attach: tmux attach -t $TMUX_SESSION"

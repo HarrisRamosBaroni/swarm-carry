@@ -16,8 +16,8 @@ The controller is constructed on the first tick that has full mocap data.
 Robot-to-payload formation offsets are derived from actual mocap poses at
 that moment, so no payload geometry parameters are needed.
 
-Use goal_setter.py (launched via launch.sh --goal-setter) to update goals and
-send emergency stops without restarting. TEAM: swap MRCapController for any
+Use control_panel.py (launched via launch.sh) to update goals and send emergency
+stops without restarting. TEAM: swap MRCapController for any
 other centralised controller that follows the
 BaseController.compute_control(payload, robots, goal, dt, forces) API.
 """
@@ -37,7 +37,7 @@ PAYLOAD_ID = -1  # sentinel id used by mocap_bridge for the payload rigid body
 
 class CentralRunner:
     def __init__(self, network_config: dict, n_robots: int,
-                 goal,  # np.ndarray or None — None means hold until goal_setter sends one
+                 goal,  # np.ndarray or None — None means hold until control_panel sends one
                  control_hz: float = 20.0,
                  horizon: int = 15,
                  v_max: float = 0.25,
@@ -96,7 +96,7 @@ class CentralRunner:
             print(f"[central] ready — n_robots={n_robots}, goal={goal} ({goal_mode}), "
                   f"payload={payload_mode}, pub_port={pub_port}")
         else:
-            print(f"[central] ready — n_robots={n_robots}, goal=<waiting for goal_setter>, "
+            print(f"[central] ready — n_robots={n_robots}, goal=<waiting for control_panel>, "
                   f"payload={payload_mode}, pub_port={pub_port}")
 
         time.sleep(0.2)
@@ -188,7 +188,7 @@ class CentralRunner:
                     if not ready and not self._printed_waiting:
                         missing = []
                         if self._goal is None:
-                            missing.append("goal (press Send Goal in goal_setter or pass --goal)")
+                            missing.append("goal (press Send Goal in control_panel or pass --goal)")
                         missing += [f"robot {i}" for i in range(self._n)
                                     if not self._got_state[i]]
                         if self._use_gt_payload and self._payload_pose is None:
@@ -267,7 +267,7 @@ def main():
     parser.add_argument("--n-robots", type=int, default=2)
     parser.add_argument("--goal", type=float, nargs=3, default=None,
                         help="Initial goal (x y theta in m/rad). Omit to hold until "
-                             "goal_setter sends the first goal.")
+                             "control_panel sends the first goal.")
     parser.add_argument("--control-hz", type=float, default=20.0)
     parser.add_argument("--horizon", type=int, default=15)
     parser.add_argument("--v-max", type=float, default=0.25)
