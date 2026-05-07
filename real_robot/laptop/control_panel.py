@@ -25,7 +25,7 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from matplotlib.widgets import Slider, Button
 
-from real_robot.transport.messages import goal_msg, estop_msg
+from real_robot.transport.messages import goal_msg, estop_msg, cmd_msg
 
 PAYLOAD_ID = -1
 ROBOT_COLORS = ["tab:blue", "tab:orange", "tab:green", "tab:red",
@@ -111,11 +111,15 @@ def main():
     sl_th  = Slider(ax_sth, "Goal θ (rad)", -3.14,  3.14, valinit=0.0, color="gold")
     sl_tol = Slider(ax_st,  "Tolerance (m)",  0.01,  1.0, valinit=args.goal_tol, color="lightblue")
 
-    ax_btn_send  = fig.add_axes([0.58, 0.025, 0.28, 0.05])
-    ax_btn_stop  = fig.add_axes([0.15, 0.025, 0.28, 0.05])
+    ax_btn_send  = fig.add_axes([0.58, 0.022, 0.28, 0.038])
+    ax_btn_stop  = fig.add_axes([0.15, 0.022, 0.28, 0.038])
+    ax_btn_snap  = fig.add_axes([0.15, 0.066, 0.28, 0.038])
+    ax_btn_reset = fig.add_axes([0.58, 0.066, 0.28, 0.038])
     ax_btn_match = fig.add_axes([0.71, 0.135, 0.16, 0.038])
-    btn_send  = Button(ax_btn_send,  "Send Goal",   color="lightgreen", hovercolor="#00cc44")
-    btn_stop  = Button(ax_btn_stop,  "Stop Robots", color="salmon",     hovercolor="#cc2200")
+    btn_send  = Button(ax_btn_send,  "Send Goal",   color="lightgreen",  hovercolor="#00cc44")
+    btn_stop  = Button(ax_btn_stop,  "Stop Robots", color="salmon",      hovercolor="#cc2200")
+    btn_snap  = Button(ax_btn_snap,  "Snapshot",    color="lightcyan",   hovercolor="#00cccc")
+    btn_reset = Button(ax_btn_reset, "Reset Pose",  color="lightyellow", hovercolor="#ddaa00")
     btn_match = Button(ax_btn_match, "Match θ",     color="lightyellow", hovercolor="#ffee55")
 
     # -------------------------------------------------------------------------
@@ -161,6 +165,13 @@ def main():
                                  color="black", fontweight="bold",
                                  bbox=dict(boxstyle="round,pad=0.3", fc="lightyellow", alpha=0.9))
 
+    snap_markers = []
+    for i in range(n):
+        col = ROBOT_COLORS[i % len(ROBOT_COLORS)]
+        m, = ax.plot([], [], marker="D", markersize=10, color=col, alpha=0.55,
+                     linestyle="None", zorder=2, mec="black", mew=1.2)
+        snap_markers.append(m)
+
     ax.legend(loc="lower right", fontsize=8)
 
     # -------------------------------------------------------------------------
@@ -168,6 +179,8 @@ def main():
     # -------------------------------------------------------------------------
     _goal = {"x": 0.0, "y": 0.0, "theta": 0.0, "tol": args.goal_tol, "sent": False}
     _block_slider = [False]  # prevent re-entrant slider callbacks
+    _snap = {"poses": None}           # (n, 3) robot poses at snapshot time
+    _reset_state = {"running": False}
 
     def _refresh_marker():
         gx, gy, gth = _goal["x"], _goal["y"], _goal["theta"]
@@ -223,6 +236,7 @@ def main():
         fig.canvas.draw_idle()
 
     def _stop(_event=None):
+        _reset_state["running"] = False
         pub.send_multipart([b"estop", estop_msg()])
         print("[control_panel] ESTOP sent")
         sent_text.set_text("ESTOP sent")
@@ -234,8 +248,99 @@ def main():
         if not np.isnan(pp[2]):
             sl_th.set_val(pp[2])
 
+    def _take_snapshot(_event=None):
+        with state.lock:
+            rp = state.robot_pose.copy()
+        if np.any(np.isnan(rp[:n])):
+            status_text.set_text("snapshot: waiting for all robot poses…")
+            fig.canvas.draw_idle()
+            return
+        _snap["poses"] = rp.copy()
+        for i in range(n):
+            snap_markers[i].set_data([rp[i, 0]], [rp[i, 1]])
+        coords = "  ".join(f"r{i}:({rp[i,0]:.2f},{rp[i,1]:.2f})" for i in range(n))
+        print(f"[control_panel] snapshot saved — {coords}")
+        status_text.set_text(f"snapshot saved — {coords}")
+        fig.canvas.draw_idle()
+
+    def _reset_worker():
+        time.sleep(0.35)  # let central_runner/agent_runners exit after ESTOP
+        ctx_r = zmq.Context.instance()
+        cmd_pub = ctx_r.socket(zmq.PUB)
+        cmd_pub.setsockopt(zmq.LINGER, 0)
+        try:
+            cmd_pub.bind(f"tcp://*:{cfg['laptop']['central_pub_port']}")
+        except zmq.ZMQError as e:
+            print(f"[control_panel] reset: could not bind cmd port — {e}")
+            _reset_state["running"] = False
+            return
+        time.sleep(0.1)  # give subscribers a moment to connect
+
+        targets = _snap["poses"][:n, :2]
+        KP, V_MAX, TOL = 1.2, 0.15, 0.05
+        DT = 0.05
+
+        while _reset_state["running"]:
+            with state.lock:
+                rp = state.robot_pose.copy()
+
+            all_done = True
+            for i in range(n):
+                if np.any(np.isnan(rp[i])):
+                    all_done = False
+                    continue
+                err = targets[i] - rp[i, :2]
+                dist = np.linalg.norm(err)
+                if dist > TOL:
+                    all_done = False
+                    v_world = KP * err
+                    mag = np.linalg.norm(v_world)
+                    if mag > V_MAX:
+                        v_world = v_world / mag * V_MAX
+                    th = rp[i, 2]
+                    cr, sr = np.cos(th), np.sin(th)
+                    vx_b =  cr * v_world[0] + sr * v_world[1]
+                    vy_b = -sr * v_world[0] + cr * v_world[1]
+                    cmd_pub.send_multipart([b"cmd", cmd_msg(i, vx_b, vy_b)])
+                else:
+                    cmd_pub.send_multipart([b"cmd", cmd_msg(i, 0.0, 0.0)])
+
+            if all_done:
+                print("[control_panel] reset: all robots reached snapshot poses")
+                break
+
+            time.sleep(DT)
+
+        for i in range(n):
+            cmd_pub.send_multipart([b"cmd", cmd_msg(i, 0.0, 0.0)])
+        time.sleep(0.1)
+        cmd_pub.close()
+        _reset_state["running"] = False
+        print("[control_panel] reset complete")
+
+    def _reset_pose(_event=None):
+        if _snap["poses"] is None:
+            status_text.set_text("no snapshot — press Snapshot first")
+            fig.canvas.draw_idle()
+            return
+        if _reset_state["running"]:
+            _reset_state["running"] = False
+            btn_reset.label.set_text("Reset Pose")
+            status_text.set_text("reset cancelled")
+            fig.canvas.draw_idle()
+            return
+        pub.send_multipart([b"estop", estop_msg()])
+        print("[control_panel] ESTOP sent before reset")
+        _reset_state["running"] = True
+        btn_reset.label.set_text("Cancel Reset")
+        status_text.set_text("resetting to snapshot poses…")
+        fig.canvas.draw_idle()
+        threading.Thread(target=_reset_worker, daemon=True).start()
+
     btn_send.on_clicked(_send)
     btn_stop.on_clicked(_stop)
+    btn_snap.on_clicked(_take_snapshot)
+    btn_reset.on_clicked(_reset_pose)
     btn_match.on_clicked(_match_theta)
 
     # -------------------------------------------------------------------------
@@ -283,22 +388,37 @@ def main():
             trail_line.set_data(trail_x, trail_y)
             all_x.append(pp[0]); all_y.append(pp[1])
 
-            dist = float(np.linalg.norm(np.array([pp[0], pp[1]]) -
-                                        np.array([_goal["x"], _goal["y"]])))
-            reached = dist < _goal["tol"]
-            pending = "" if _goal["sent"] else "  [PENDING — click Send Goal]"
-            msg = f"dist to goal: {dist*100:.1f} cm{pending}"
-            if reached and _goal["sent"]:
-                msg += "  ✓ REACHED"
-            status_text.set_text(msg)
-            status_text.get_bbox_patch().set_facecolor(
-                "lightgreen" if (reached and _goal["sent"]) else "white"
-            )
+            if not _reset_state["running"]:
+                dist = float(np.linalg.norm(np.array([pp[0], pp[1]]) -
+                                            np.array([_goal["x"], _goal["y"]])))
+                reached = dist < _goal["tol"]
+                pending = "" if _goal["sent"] else "  [PENDING — click Send Goal]"
+                msg = f"dist to goal: {dist*100:.1f} cm{pending}"
+                if reached and _goal["sent"]:
+                    msg += "  ✓ REACHED"
+                status_text.set_text(msg)
+                status_text.get_bbox_patch().set_facecolor(
+                    "lightgreen" if (reached and _goal["sent"]) else "white"
+                )
         else:
             payload_dot.set_visible(False)
             payload_arrow.set_visible(False)
-            status_text.set_text("waiting for payload pose…")
+            if not _reset_state["running"]:
+                status_text.set_text("waiting for payload pose…")
             payload_theta_text.set_text("payload θ: —")
+
+        if _reset_state["running"] and _snap["poses"] is not None:
+            errs = []
+            for i in range(n):
+                if not np.any(np.isnan(rp[i])):
+                    errs.append(np.linalg.norm(_snap["poses"][i, :2] - rp[i, :2]))
+            if errs:
+                err_str = "  ".join(f"r{i}:{errs[i]*100:.0f}cm"
+                                    for i in range(len(errs)))
+                status_text.set_text(f"[RESET] {err_str}  — click Reset Pose to cancel")
+            status_text.get_bbox_patch().set_facecolor("lightyellow")
+        elif not _reset_state["running"] and btn_reset.label.get_text() == "Cancel Reset":
+            btn_reset.label.set_text("Reset Pose")
 
         if all_x:
             xmin, xmax = min(all_x) - _PAD, max(all_x) + _PAD
@@ -308,7 +428,7 @@ def main():
             ax.set_xlim(min(cur_xl[0], xmin), max(cur_xl[1], xmax))
             ax.set_ylim(min(cur_yl[0], ymin), max(cur_yl[1], ymax))
 
-        return (robot_circles + robot_arrows + robot_labels +
+        return (robot_circles + robot_arrows + robot_labels + snap_markers +
                 [payload_dot, payload_arrow, trail_line,
                  goal_star, goal_heading, status_text, sent_text, payload_theta_text])
 
