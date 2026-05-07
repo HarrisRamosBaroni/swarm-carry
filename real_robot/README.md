@@ -54,11 +54,6 @@ python swarmlib/sensors/force/calibrate_vals.py
 ```
 Copy the printed `zeroOffset` / `calFactor` values into a `config.yaml` (see `swarmlib/sensors/force/config.yaml.example`). Put that file somewhere accessible on the robot, e.g. `/home/ubuntu/force_config.yaml`.
 
-**3. Copy network config to each robot:**
-```bash
-scp real_robot/config/network.yaml ubuntu@192.168.0.101:/home/ubuntu/network.yaml
-```
-
 ---
 
 ## Run order
@@ -74,20 +69,27 @@ Two scripts handle the full launch. Run both from the repo root.
 ./real_robot/scripts/deploy.sh --mode decentralised --all
 ```
 
-Flags can be combined freely: `--yaml`, `--pull`, `--launch` (or `--all`). Extra agent args append via env: `AGENT_EXTRA_ARGS="--gbp-async" ./deploy.sh --mode decentralised --launch`.
+Flags can be combined freely: `--yaml` (scp `network.yaml` to all robots), `--pull`, `--launch` (or `--all`). Extra agent args append via env: `AGENT_EXTRA_ARGS="--gbp-async" ./deploy.sh --mode decentralised --launch`.
 
 **Laptop** (`launch.sh` — opens a local tmux session `swarm-laptop`):
 ```bash
-# centralised: mocap window + controller window
+# centralised: mocap + controller + control_panel windows
 ./real_robot/scripts/launch.sh --mode central --goal 2 0 0
 
-# decentralised: mocap window only
+# decentralised: mocap + control_panel windows
 ./real_robot/scripts/launch.sh --mode decentralised
+
+# skip control_panel if you want to set goals only via --goal / --relative-goal
+./real_robot/scripts/launch.sh --mode central --goal 2 0 0 --no-control-panel
 ```
 
 Attach anytime: `tmux attach -t swarm-laptop`. Kill: `tmux kill-session -t swarm-laptop`.
 
-Central-mode options: `--n-robots N`, `--gt-payload`, `--relative-goal`, `--viewer`, `--server IP`.
+`--goal X Y theta` pre-loads an initial goal so the controller starts moving immediately on launch. Omit it to hold at zero until you hit **Send Goal** in the control panel. The control panel always opens regardless — `--goal` just skips the waiting phase.
+
+Central-mode options: `--n-robots N`, `--gt-payload`, `--relative-goal`, `--server IP`.
+
+**Control panel** (`control_panel.py`) opens by default in the `control_panel` tmux window. Left-click the map or use sliders to place a goal, then hit **Send Goal** to publish it live — `central_runner` and all `agent_runner`s pick it up without restart. **Stop Robots** broadcasts an emergency-stop (`estop`) over ZMQ; all runners (centralised and decentralised) send zero velocities and exit immediately.
 
 To monitor live poses:
 ```bash
