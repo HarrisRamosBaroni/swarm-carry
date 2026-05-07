@@ -48,8 +48,9 @@ from swarmlib.simulation.mecanum_env import MecanumTransportEnv
 from swarmlib.simulation.generate_mecanum_scene import face_contact_formation
 from swarmlib.controllers import (
     MRCapController,
-    DRCapController,
-    ForceCentralisedController,
+    # DRCapController,
+    DRCapDistributedController,
+    ForceCentralisedControllerCVel,
     ForceDistributedController,
     ForcelessCentralisedControllerCVel,
 
@@ -63,8 +64,10 @@ from swarmlib.communication.backend import (
 
 
 # values
-ControllersList = [MRCapController, DRCapController, ForceCentralisedController,
+ControllersList = [MRCapController, DRCapDistributedController, ForceCentralisedControllerCVel,
                    ForceDistributedController, ForcelessCentralisedControllerCVel]
+
+DecentralisedControllers = [DRCapDistributedController, ForceDistributedController]
 
 distances_to_goal = [i * 3 for i in range(1,11)]
 
@@ -150,7 +153,7 @@ def run_single(
 
     backend = build_backend(backend_kind, n_robots, topology_kind, dropout, seed=42)
 
-    if ChosenController is MRCapController:
+    if ChosenController not in DecentralisedControllers:
         controller = ChosenController(
             num_robots=n_robots,
             formation=formation,
@@ -230,8 +233,9 @@ def run_single(
             forces=forces,
         )
         solve_times.append(controller.get_solve_time())
-        gbp_iters_log.append(controller.get_gbp_iters())
-
+        if ChosenController in DecentralisedControllers:
+            gbp_iters_log.append(controller.get_gbp_iters())
+        
         obs = env.step(controls)
 
         step_torques = np.array([[env.data.ctrl[aid] for aid in ids]
@@ -288,7 +292,7 @@ def run_single(
         "solve_time_std_ms":  float(np.std(solve_times)  * 1e3),
         "solve_time_max_ms":  float(np.max(solve_times)  * 1e3),
         "gbp_iters_mean":     float(np.mean(gbp_iters_log)),
-        "gbp_iters_max":      int(np.max(gbp_iters_log)),
+        "gbp_iters_max":      int(np.max(gbp_iters_log)) if ChosenController in DecentralisedControllers else np.nan,
         "messages_sent":      int(comm_stats.get("messages_sent", 0)),
         "messages_dropped":   int(comm_stats.get("messages_dropped", 0)),
         "n_steps":            len(solve_times),
@@ -508,7 +512,6 @@ def main():
     out_path = Path(__file__).parent / "results.json"
     out_path.write_text(json.dumps(out, indent=2))
     print(f"Results saved to {out_path}")
-
 
 if __name__ == "__main__":
     main()

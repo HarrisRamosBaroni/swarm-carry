@@ -2,10 +2,11 @@ import zmq
 import yaml
 import csv
 import time
+import msgpack
 from datetime import datetime
 
 CONFIG_FILE = "real_robot/config/network.yaml"
-OUTPUT_FILE = "zmq_log.csv"
+OUTPUT_FILE = "zmq_log_" + str(int(time.time())) + ".csv"
 
 
 def load_config(path):
@@ -60,24 +61,47 @@ def main():
         writer = csv.writer(f)
         writer.writerow(["timestamp", "endpoint", "message"])
 
+        poller = zmq.Poller()
+        poller.register(socket, zmq.POLLIN)
+
         try:
             while True:
-                msg = socket.recv()
+                events = dict(poller.poll(100))  # timeout in ms
 
-                timestamp = datetime.utcnow().isoformat()
+                if socket in events:
+                    # msg = socket.recv()
 
-                # If messages are bytes, decode safely
-                try:
-                    msg_str = msg.decode("utf-8")
-                except UnicodeDecodeError:
-                    msg_str = str(msg)
+                    # timestamp = datetime.utcnow().isoformat()
 
-                # NOTE: ZMQ SUB does not tell you which endpoint sent it
-                writer.writerow([timestamp, "unknown", msg_str])
-                f.flush()
+                    # try:
+                    #     msg_str = msg.decode("utf-8")
+                    # except UnicodeDecodeError:
+                    #     msg_str = str(msg)
+
+                    # writer.writerow([timestamp, "unknown", msg_str])
+                    # f.flush()
+
+                    msg_parts = socket.recv_multipart()
+
+                    timestamp = datetime.utcnow().isoformat()
+
+                    if len(msg_parts) == 2:
+                        topic = msg_parts[0].decode("utf-8")
+
+                        try:
+                            data = msgpack.unpackb(msg_parts[1], raw=False)
+                        except Exception:
+                            data = str(msg_parts[1])
+
+                    else:
+                        topic = "unknown"
+                        data = str(msg_parts)
+
+                    writer.writerow([timestamp, topic, data])
+                    f.flush()
 
         except KeyboardInterrupt:
-            print("\nLogging stopped.")
+            print("\nLogging stopped cleanly.")
 
 
 if __name__ == "__main__":

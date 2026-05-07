@@ -1,8 +1,8 @@
 """
-DR.CAP distributed factor-graph controller — scaling experiment.
+Decentralised force-feedback factor-graph-based controller 
 
-Mirrors experiments/mrcap_fg/run_experiment.py but with the distributed
-DR.CAP controller driven by a swappable communication backend.
+Mirrors experiments/mrcap_fg/run_experiment.py but with the decentralised 
+force-feedback controller driven by a swappable communication backend.
 
   python run_experiment.py                          # default: n=2,3,4  sim backend
   python run_experiment.py --n-values 2,4 --distance 3.0

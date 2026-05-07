@@ -324,8 +324,8 @@ class ForceCentralisedControllerCVel(BaseController):
 
         self._set_solve_time(time.perf_counter() - t0)
 
-        print("Wall forces:", wall_forces, "  Base forces:", base_forces)
-        print("mass estimate:",mass_estimate)
+        # print("Wall forces:", wall_forces, "  Base forces:", base_forces)
+        # print("mass estimate:",mass_estimate)
 
         return self._robot_velocities2(U_c_all), mass_estimate, centroid_velocity_estimate #TODO robot velocities x10 bc they are way too slow for some reason...
 

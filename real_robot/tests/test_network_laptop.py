@@ -48,7 +48,7 @@ except zmq.Again:
 
 print(f"Sending cmd to robot on port {lap_port}...")
 time.sleep(0.3)
-pub.send_multipart([b"cmd", cmd_msg(args.robot_id, 0.1, 0.0)])
+pub.send_multipart([b"cmd", cmd_msg(args.robot_id, 0.4, 0.0)])
 time.sleep(0.2)
 
 print("PASS")

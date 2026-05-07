@@ -296,8 +296,8 @@ class ForceCentralisedController(BaseController):
     ) -> np.ndarray:
         centroid = payload_state[:3].copy()   # [x, y, theta]
         robots = robot_states[:,:3].copy() # [x, y, theta] for each robot
-        print('payload_state:', payload_state)
-        print('robot_states:', robot_states) 
+        # print('payload_state:', payload_state)
+        # print('robot_states:', robot_states) 
 
         goal     = np.asarray(goal_state, dtype=float)[:3]
 
@@ -308,8 +308,8 @@ class ForceCentralisedController(BaseController):
 
         self._set_solve_time(time.perf_counter() - t0)
 
-        print("Forces:", forces)
-        print("mass estimate:",mass_estimate)
+        # print("Forces:", forces)
+        # print("mass estimate:",mass_estimate)
 
         return self._robot_velocities2(U_c_all)*10, mass_estimate #TODO robot velocities x10 bc they are way too slow for some reason...
 
@@ -432,7 +432,7 @@ class ForceCentralisedController(BaseController):
             #initialise all robot nodes
             for i in range(self.num_robots):
                 # init.insert(current_robot_nodes_fg[i], np.array([float(self._robots_init_pos[i,0]), float(self._robots_init_pos[i,1]), 0.0])) #angle assumption here is wrong but we do nothing with angles so doesn't matter really
-                print('robots:',robots)
+                # print('robots:',robots)
                 traj_offset = ref[j].copy() - ref[0].copy() #follow (roughly) trajectory of centroid
                 init.insert(current_robot_nodes_fg[i], np.array([float(robots[i,0]) + traj_offset[0], float(robots[i,1]) + traj_offset[1], float(robots[i,2]) + traj_offset[2]])) #use positions measured from Sim (simulating MoCap) for robot positions at time t
 
@@ -469,9 +469,9 @@ class ForceCentralisedController(BaseController):
         hi = np.array([ self._v_max,  self._v_max,  self._omega_max])
 
         # U_opt = np.clip(U_opt, lo, hi)
-        print('all_U_opt before clip',all_U_opt)
+        # print('all_U_opt before clip',all_U_opt)
         all_U_opt = np.clip(all_U_opt, lo, hi)
-        print('all_U_opt after clip',all_U_opt)
+        # print('all_U_opt after clip',all_U_opt)
         M_opt = np.clip(M_opt, 0.1, 10000) #clip mass to avoid numerical instability (especially negative or =0)
         return all_U_opt, M_opt
 
@@ -507,7 +507,7 @@ class ForceCentralisedController(BaseController):
           v_iy = vy_c + omega_c * r_ix
         Then clamp individual robot speeds to v_max.
         """
-        print('U_c_all', U_c_all)
+        # print('U_c_all', U_c_all)
         
         vx = U_c_all[:,0]
         vy =  U_c_all[:,1]
@@ -520,7 +520,7 @@ class ForceCentralisedController(BaseController):
 
         speeds = np.hypot(vx, vy)
         scale  = np.where(speeds > self._v_max, self._v_max / speeds, 1.0)
-        print('return robot vel', np.column_stack([vx * scale, vy * scale]))
+        # print('return robot vel', np.column_stack([vx * scale, vy * scale]))
         return np.column_stack([vx * scale, vy * scale])
     
 
