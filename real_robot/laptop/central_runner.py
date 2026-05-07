@@ -139,6 +139,15 @@ class CentralRunner:
                 print(f"[central] goal updated to ({d['x']:.2f}, {d['y']:.2f}, "
                       f"{d['theta']:.2f} rad) tol={self._goal_tol:.2f} m")
                 continue
+            if t == "force":
+                rid = d.get("id")
+                if rid is not None and 0 <= rid < self._n:
+                    for r in d.get("readings", []):
+                        if r["label"] == "horizontal":
+                            self._forces[rid, 0] = r["value"]
+                        elif r["label"] == "vertical":
+                            self._forces[rid, 2] = r["value"]
+                continue
             if t != "pose":
                 continue
             rid = d.get("id", 0)
