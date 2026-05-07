@@ -276,9 +276,11 @@ class CentralRunner:
                         dist = float(np.linalg.norm(payload_state[:2] - self._goal[:2]))
                         if dist < self._goal_tol:
                             print(f"[central] GOAL REACHED — dist={dist*100:.1f} cm < "
-                                  f"{self._goal_tol*100:.0f} cm threshold")
+                                  f"{self._goal_tol*100:.0f} cm threshold — waiting for next goal")
                             self._send_zeros()
-                            return
+                            self._goal = None
+                            self._printed_waiting = False
+                            continue
                         if self.controller is None:
                             formation = self._formation_from_poses(payload_state)
                             print(f"[central] formation calibrated from mocap: {formation}")
