@@ -34,6 +34,7 @@ TMUX_SESSION="swarm"
 AGENT_EXTRA_ARGS="${AGENT_EXTRA_ARGS:-}"   # appended after mode-derived args
 
 MODE="central"
+CONTROLLER="drcap"
 DO_YAML=false
 DO_PULL=false
 DO_LAUNCH=false
@@ -41,13 +42,14 @@ DO_STOP=false
 
 while [[ $# -gt 0 ]]; do
   case $1 in
-    --mode)   MODE="$2"; shift 2 ;;
-    --yaml)   DO_YAML=true; shift ;;
-    --pull)   DO_PULL=true; shift ;;
-    --launch) DO_LAUNCH=true; shift ;;
-    --reload) DO_YAML=true; DO_LAUNCH=true; shift ;;
-    --all)    DO_YAML=true; DO_PULL=true; DO_LAUNCH=true; shift ;;
-    --stop)   DO_STOP=true; shift ;;
+    --mode)       MODE="$2"; shift 2 ;;
+    --controller) CONTROLLER="$2"; shift 2 ;;
+    --yaml)       DO_YAML=true; shift ;;
+    --pull)       DO_PULL=true; shift ;;
+    --launch)     DO_LAUNCH=true; shift ;;
+    --reload)     DO_YAML=true; DO_LAUNCH=true; shift ;;
+    --all)        DO_YAML=true; DO_PULL=true; DO_LAUNCH=true; shift ;;
+    --stop)       DO_STOP=true; shift ;;
     *) echo "unknown arg: $1"; exit 1 ;;
   esac
 done
@@ -96,7 +98,7 @@ for i in "${!ROBOT_IDS[@]}"; do
   else
     BASE_ARGS="--passive"
   fi
-  ROBOT_ARGS="${BASE_ARGS}${AGENT_EXTRA_ARGS:+ $AGENT_EXTRA_ARGS}"
+  ROBOT_ARGS="${BASE_ARGS} --controller ${CONTROLLER}${AGENT_EXTRA_ARGS:+ $AGENT_EXTRA_ARGS}"
 
   if $DO_STOP; then
     echo "    [stop] killing tmux session '$TMUX_SESSION'"

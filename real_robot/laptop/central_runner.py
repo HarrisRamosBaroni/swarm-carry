@@ -29,10 +29,27 @@ import zmq
 import numpy as np
 
 from real_robot.transport.messages import cmd_msg, unpack
-from swarmlib.controllers import MRCapController
 
 
 PAYLOAD_ID = -1  # sentinel id used by mocap_bridge for the payload rigid body
+
+_CENTRAL_CONTROLLERS = ("mrcap", "force_cvel", "forceless")
+
+
+def _make_central_controller(name, num_robots, formation, config):
+    from swarmlib.controllers import (
+        MRCapController,
+        ForceCentralisedControllerCVel,
+        ForcelessCentralisedControllerCVel,
+    )
+    classes = {
+        "mrcap":      MRCapController,
+        "force_cvel": ForceCentralisedControllerCVel,
+        "forceless":  ForcelessCentralisedControllerCVel,
+    }
+    ctrl = classes[name](num_robots=num_robots, formation=formation, config=config)
+    ctrl.reset()
+    return ctrl
 
 
 class CentralRunner:
@@ -43,7 +60,8 @@ class CentralRunner:
                  v_max: float = 0.25,
                  use_gt_payload: bool = False,
                  relative_goal: bool = False,
-                 goal_tol: float = 0.15):
+                 goal_tol: float = 0.15,
+                 controller_name: str = "mrcap"):
         self._n = n_robots
         self._goal = goal          # None until set; absolute or offset depending on relative_goal
         self._goal_offset = goal if (relative_goal and goal is not None) else None
@@ -83,21 +101,25 @@ class CentralRunner:
         self._last_heartbeat = 0.0
 
         self.controller = None
+        self._controller_name = controller_name
         self._controller_cfg = {
             "horizon": horizon,
             "v_max": v_max,
             "estimate_centroid": not use_gt_payload,
         }
+        # warm-start state for force_cvel (ignored by other controllers)
+        self._mass_est = None
+        self._vel_est = None
 
         payload_mode = "gt-mocap" if use_gt_payload else "centroid-estimator"
         pub_port = cfg['laptop']['central_pub_port']
         if goal is not None:
             goal_mode = "relative" if relative_goal else "absolute"
-            print(f"[central] ready — n_robots={n_robots}, goal={goal} ({goal_mode}), "
-                  f"payload={payload_mode}, pub_port={pub_port}")
+            print(f"[central] ready — n_robots={n_robots}, controller={controller_name}, "
+                  f"goal={goal} ({goal_mode}), payload={payload_mode}, pub_port={pub_port}")
         else:
-            print(f"[central] ready — n_robots={n_robots}, goal=<waiting for control_panel>, "
-                  f"payload={payload_mode}, pub_port={pub_port}")
+            print(f"[central] ready — n_robots={n_robots}, controller={controller_name}, "
+                  f"goal=<waiting for control_panel>, payload={payload_mode}, pub_port={pub_port}")
 
         time.sleep(0.2)
 
@@ -164,6 +186,38 @@ class CentralRunner:
         y = float(self._robot_states[:self._n, 1].mean())
         return np.array([x, y, 0.0, 0.0, 0.0, 0.0])
 
+    def _invoke_controller(self, payload_state, robot_states, goal_state, dt):
+        name = self._controller_name
+        ctrl = self.controller
+        forces = self._forces  # (n, 3) — zeros until force processing is wired up
+        if name == "force_cvel":
+            result, self._mass_est, self._vel_est = ctrl.compute_control(
+                payload_state=payload_state,
+                robot_states=robot_states,
+                goal_state=goal_state,
+                dt=dt,
+                wall_forces=forces[:, 0],
+                base_forces=forces[:, 2],
+                mass_estimate=self._mass_est,
+                centroid_velocity_estimate=self._vel_est,
+            )
+            return result
+        elif name == "forceless":
+            return ctrl.compute_control(
+                payload_state=payload_state,
+                robot_states=robot_states,
+                goal_state=goal_state,
+                dt=dt,
+            )
+        else:  # mrcap
+            return ctrl.compute_control(
+                payload_state=payload_state,
+                robot_states=robot_states,
+                goal_state=goal_state,
+                dt=dt,
+                forces=forces,
+            )
+
     def _send_zeros(self):
         for i in range(self._n):
             self._pub.send_multipart([b"cmd", cmd_msg(i, 0.0, 0.0)])
@@ -219,18 +273,17 @@ class CentralRunner:
                         if self.controller is None:
                             formation = self._formation_from_poses(payload_state)
                             print(f"[central] formation calibrated from mocap: {formation}")
-                            self.controller = MRCapController(
+                            self.controller = _make_central_controller(
+                                self._controller_name,
                                 num_robots=self._n,
                                 formation=formation,
                                 config=self._controller_cfg,
                             )
-                            self.controller.reset()
-                        controls = self.controller.compute_control(
+                        controls = self._invoke_controller(
                             payload_state=payload_state,
                             robot_states=self._robot_states,
                             goal_state=self._goal,
                             dt=self._dt,
-                            forces=self._forces,
                         )
                         for i in range(self._n):
                             theta = self._robot_states[i, 2]
@@ -282,6 +335,9 @@ def main():
     parser.add_argument("--goal-tol", type=float, default=0.15,
                         help="Stop when payload is within this distance (metres) of the goal. "
                              "Default: 0.15 m.")
+    parser.add_argument("--controller", default="mrcap",
+                        choices=_CENTRAL_CONTROLLERS,
+                        help="Centralised controller to use. Default: mrcap.")
     args = parser.parse_args()
 
     with open(args.config) as f:
@@ -295,6 +351,7 @@ def main():
         use_gt_payload=args.gt_payload,
         relative_goal=args.relative_goal,
         goal_tol=args.goal_tol,
+        controller_name=args.controller,
     )
     runner.run()
 

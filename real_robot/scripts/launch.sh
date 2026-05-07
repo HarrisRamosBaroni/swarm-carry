@@ -45,6 +45,7 @@ N_ROBOTS=""
 GT_PAYLOAD=false
 RELATIVE_GOAL=false
 CONTROL_PANEL=true
+CONTROLLER="mrcap"
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -56,6 +57,7 @@ while [[ $# -gt 0 ]]; do
     --gt-payload)        GT_PAYLOAD=true; shift ;;
     --relative-goal)     RELATIVE_GOAL=true; shift ;;
     --no-control-panel)  CONTROL_PANEL=false; shift ;;
+    --controller)        CONTROLLER="$2"; shift 2 ;;
     *) echo "unknown arg: $1"; exit 1 ;;
   esac
 done
@@ -91,7 +93,7 @@ tmux new-session -d -s "$TMUX_SESSION" -n mocap
 tmux send-keys -t "$TMUX_SESSION:mocap" "$MOCAP_CMD" Enter
 
 if [[ "$MODE" == "central" ]]; then
-  CTRL_CMD="$PYTHON -m real_robot.laptop.central_runner --config $CONFIG --n-robots $N_ROBOTS"
+  CTRL_CMD="$PYTHON -m real_robot.laptop.central_runner --config $CONFIG --n-robots $N_ROBOTS --controller $CONTROLLER"
   if [[ -n "$GOAL" ]];    then CTRL_CMD="$CTRL_CMD --goal $GOAL";     fi
   if $GT_PAYLOAD;         then CTRL_CMD="$CTRL_CMD --gt-payload";      fi
   if $RELATIVE_GOAL;      then CTRL_CMD="$CTRL_CMD --relative-goal";   fi

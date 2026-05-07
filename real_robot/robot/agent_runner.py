@@ -27,6 +27,28 @@ from swarmlib.communication.zmq_backend import ZeroMQSingleAgentBackend
 
 PAYLOAD_ID = -1  # sentinel id mocap_bridge uses for the payload rigid body
 
+_AGENT_CONTROLLERS = ("drcap",)  # extend once a controller has my_id deploy support
+
+
+def _make_agent_controller(name, num_robots, formation, backend, my_id, config):
+    from swarmlib.controllers import DRCapDistributedController
+    # Add entries here when new distributed controllers gain my_id deploy support
+    # (see sim->deployment pattern in real_robot/README.md).
+    classes = {
+        "drcap": DRCapDistributedController,
+    }
+    if name not in classes:
+        raise ValueError(f"unknown controller '{name}'; choices: {sorted(classes)}")
+    ctrl = classes[name](
+        num_robots=num_robots,
+        formation=formation,
+        backend=backend,
+        my_id=my_id,
+        config=config,
+    )
+    ctrl.reset()
+    return ctrl
+
 
 class AgentRunner:
     def __init__(self, robot_id: int, neighbor_ids: list,
@@ -37,7 +59,8 @@ class AgentRunner:
                  gbp_max_iters: int = 30,
                  horizon: int = 15,
                  v_max: float = 0.25,
-                 passive: bool = False):
+                 passive: bool = False,
+                 controller_name: str = "drcap"):
         self._id = robot_id
         self._neighbors = neighbor_ids
         self._goal = goal
@@ -104,6 +127,7 @@ class AgentRunner:
         self._last_heartbeat = 0.0
 
         self.controller = None
+        self._controller_name = controller_name
         self._controller_cfg = {
             "horizon": horizon,
             "v_max": v_max,
@@ -214,17 +238,16 @@ class AgentRunner:
                         self._printed_waiting = False
 
                     if self.controller is None:
-                        from swarmlib.controllers import DRCapDistributedController
                         formation = self._formation_from_poses()
                         print(f"[agent {self._id}] formation calibrated from mocap: {formation}")
-                        self.controller = DRCapDistributedController(
+                        self.controller = _make_agent_controller(
+                            self._controller_name,
                             num_robots=self._n_robots,
                             formation=formation,
                             backend=self.backend,
                             my_id=self._id,
                             config=self._controller_cfg,
                         )
-                        self.controller.reset()
 
                     # Differentiate own mocap pose for velocity
                     if self._own_prev_pose is not None:
@@ -290,6 +313,9 @@ def main():
     parser.add_argument("--gbp-max-iters", type=int, default=30)
     parser.add_argument("--gbp-async", action="store_true",
                         help="Use asynchronous GBP (non-blocking barrier, uses stale beliefs)")
+    parser.add_argument("--controller", default="drcap",
+                        choices=_AGENT_CONTROLLERS,
+                        help="Decentralised controller to use. Default: drcap.")
     args = parser.parse_args()
 
     with open(args.config) as f:
@@ -307,6 +333,7 @@ def main():
         horizon=args.horizon,
         v_max=args.v_max,
         passive=args.passive,
+        controller_name=args.controller,
     )
     runner.run()
 

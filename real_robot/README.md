@@ -78,7 +78,7 @@ Two scripts handle the full launch. Run both from the repo root.
 ./real_robot/scripts/deploy.sh --mode decentralised --all
 ```
 
-Flags can be combined freely: `--yaml` (scp `network.yaml` to all robots), `--pull`, `--launch` (or `--all`). Extra agent args append via env: `AGENT_EXTRA_ARGS="--gbp-async" ./deploy.sh --mode decentralised --launch`.
+Flags can be combined freely: `--yaml` (scp `network.yaml` to all robots), `--pull`, `--launch` (or `--all`). `--controller` selects the decentralised controller (default: `drcap`). Extra agent args append via env: `AGENT_EXTRA_ARGS="--gbp-async" ./deploy.sh --mode decentralised --launch`.
 
 **Laptop** (`launch.sh` — opens a local tmux session `swarm-laptop`):
 ```bash
@@ -96,7 +96,7 @@ Attach anytime: `tmux attach -t swarm-laptop`. Kill: `tmux kill-session -t swarm
 
 `--goal X Y theta` pre-loads an initial goal so the controller starts moving immediately on launch. Omit it to hold at zero until you hit **Send Goal** in the control panel. The control panel always opens regardless — `--goal` just skips the waiting phase.
 
-Central-mode options: `--n-robots N`, `--gt-payload`, `--relative-goal`, `--server IP`.
+Central-mode options: `--n-robots N`, `--gt-payload`, `--relative-goal`, `--server IP`, `--controller [mrcap|force_cvel|forceless]` (default `mrcap`).
 
 **Control panel** (`control_panel.py`) opens by default in the `control_panel` tmux window. Left-click the map or use sliders to place a goal, then hit **Send Goal** to publish it live — `central_runner` and all `agent_runner`s pick it up without restart. **Stop Robots** broadcasts an emergency-stop (`estop`) over ZMQ; all runners (centralised and decentralised) send zero velocities and exit immediately.
 
@@ -111,16 +111,24 @@ python3 -m real_robot.scripts.mocap_echo
 
 ### Centralised
 
-`central_runner.py` ships wired to `MRCapController`. Two payload-pose modes:
+Pass `--controller NAME` to `launch.sh` (and it forwards to `central_runner.py`). Available controllers:
+
+| Name | Class | Notes |
+|---|---|---|
+| `mrcap` (default) | `MRCapController` | Centroid-only FG; supports estimator or GT-mocap payload mode |
+| `force_cvel` | `ForceCentralisedControllerCVel` | Per-robot FG with force/mass estimation; load-cell feedback wired to `wall_forces`/`base_forces` once force ZMQ processing is enabled |
+| `forceless` | `ForcelessCentralisedControllerCVel` | Per-robot FG, no force inputs |
+
+Two payload-pose modes:
 
 - **Estimator mode (default)** — no payload mocap rigid body required. The runner synthesises an init payload pose from initial robot positions; `CentroidEstimator` calibrates body-frame offsets `r_i` once and infers payload pose+vel from robot states thereafter. Smoke-test friendly.
 - **GT mocap mode** — pass `--gt-payload`. Requires a `payload` rigid body in the mocap software (registered under `payload.mocap_rigid_id` in `network.yaml`). `mocap_bridge.py` forwards it with sentinel id `-1`.
 
-To swap controllers, edit the `MRCapController(...)` instantiation in `central_runner.py`. Any controller with the standard `compute_control(payload_state, robot_states, goal_state, dt, forces)` signature is a drop-in replacement.
-
 ### Decentralised — sim→deployment pattern
 
-Decentralised controllers in this repo follow one pattern so that the same class runs unchanged in sim and on real robots. `DRCapDistributedController` is the reference implementation (`swarmlib/controllers/drcap_distributed_controller.py`). Any new decentralised controller the team writes should follow the same pattern:
+Pass `--controller NAME` to `deploy.sh` to select the decentralised controller on all robots (default: `drcap`). Currently only `drcap` is available for deployment; to add another, see the requirements below.
+
+Decentralised controllers in this repo follow one pattern so that the same class runs unchanged in sim and on real robots. `DRCapDistributedController` is the reference implementation (`swarmlib/controllers/drcap_distributed_controller.py`). Any new decentralised controller the team writes should follow the same pattern — and once it does, add it to `_AGENT_CONTROLLERS` / `_make_agent_controller` in `real_robot/robot/agent_runner.py`.
 
 **1. Accept `my_id` and `backend` as constructor args.**
 ```python
