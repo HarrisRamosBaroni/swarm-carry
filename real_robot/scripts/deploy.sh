@@ -122,7 +122,7 @@ for i in "${!ROBOT_IDS[@]}"; do
         'source /home/ubuntu/myagv_ros/devel/setup.bash && roslaunch myagv_odometry myagv_active.launch' Enter
       tmux new-window -t $TMUX_SESSION -n agent
       tmux send-keys -t $TMUX_SESSION:agent \
-        'cd $REMOTE_REPO && sudo PYTHONPATH=\$PYTHONPATH python3 -m real_robot.robot.agent_runner --config $REMOTE_CONFIG --id $ID $ROBOT_ARGS' Enter
+        'cd $REMOTE_REPO && sudo PYTHONPATH=\$PYTHONPATH python3.12 -m real_robot.robot.agent_runner --config $REMOTE_CONFIG --id $ID $ROBOT_ARGS' Enter
 EOF
     echo "    attach: ssh $REMOTE_USER@$IP -t tmux attach -t $TMUX_SESSION"
   fi
