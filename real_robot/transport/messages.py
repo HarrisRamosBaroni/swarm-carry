@@ -40,6 +40,13 @@ def force_msg(robot_id: int, readings: list) -> bytes:
     })
 
 
+def goal_msg(x: float, y: float, theta: float, tol: float) -> bytes:
+    return msgpack.packb({
+        "t": "goal",
+        "x": x, "y": y, "theta": theta, "tol": tol,
+    })
+
+
 def cmd_msg(robot_id: int, vx: float, vy: float) -> bytes:
     return msgpack.packb({
         "t": "cmd",

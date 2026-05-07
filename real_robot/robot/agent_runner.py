@@ -53,12 +53,14 @@ class AgentRunner:
         self._pub = ctx.socket(zmq.PUB)
         self._pub.bind(f"tcp://*:{my_port}")
 
-        # SUB: mocap poses from laptop (+ cmd_vel if centralised)
+        # SUB: mocap poses + commands + goal updates from laptop
         self._sub = ctx.socket(zmq.SUB)
         self._sub.connect(f"tcp://{cfg['laptop']['ip']}:{cfg['laptop']['mocap_pub_port']}")
         self._sub.connect(f"tcp://{cfg['laptop']['ip']}:{cfg['laptop']['central_pub_port']}")
+        self._sub.connect(f"tcp://{cfg['laptop']['ip']}:{cfg['laptop']['goal_pub_port']}")
         self._sub.setsockopt_string(zmq.SUBSCRIBE, "pose")
         self._sub.setsockopt_string(zmq.SUBSCRIBE, "cmd")
+        self._sub.setsockopt_string(zmq.SUBSCRIBE, "goal")
 
         # Also subscribe to neighbor force for decentralised controller
         if not passive:
@@ -153,7 +155,12 @@ class AgentRunner:
                 topic_bytes, raw = self._sub.recv_multipart()
                 d = unpack(raw)
                 t = d.get("t")
-                if t == "pose":
+                if t == "goal":
+                    self._goal = np.array([d["x"], d["y"], d["theta"]])
+                    print(f"[agent {self._id}] goal updated to "
+                          f"({d['x']:.2f}, {d['y']:.2f}, {d['theta']:.2f} rad) "
+                          f"tol={d['tol']:.2f} m")
+                elif t == "pose":
                     rid = d["id"]
                     self._poses[rid] = d
                     if rid == self._id and not self._got_own_pose:

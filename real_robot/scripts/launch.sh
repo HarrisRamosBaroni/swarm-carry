@@ -20,6 +20,7 @@
 #   --gt-payload                   use live mocap payload pose (central only)
 #   --relative-goal                treat --goal as offset from initial centroid (central only)
 #   --viewer                       launch live_viewer alongside controller (central only)
+#   --goal-setter                  open goal_setter in a tmux window (works in both modes)
 #
 # Attach: tmux attach -t swarm-laptop
 # Kill:   tmux kill-session -t swarm-laptop
@@ -37,6 +38,7 @@ N_ROBOTS=""
 GT_PAYLOAD=false
 RELATIVE_GOAL=false
 VIEWER=false
+GOAL_SETTER=false
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -48,6 +50,7 @@ while [[ $# -gt 0 ]]; do
     --gt-payload)    GT_PAYLOAD=true; shift ;;
     --relative-goal) RELATIVE_GOAL=true; shift ;;
     --viewer)        VIEWER=true; shift ;;
+    --goal-setter)   GOAL_SETTER=true; shift ;;
     *) echo "unknown arg: $1"; exit 1 ;;
   esac
 done
@@ -90,6 +93,13 @@ if [[ "$MODE" == "central" ]]; then
 
   tmux new-window -t "$TMUX_SESSION" -n controller
   tmux send-keys -t "$TMUX_SESSION:controller" "$CTRL_CMD" Enter
+  tmux select-window -t "$TMUX_SESSION:mocap"
+fi
+
+if $GOAL_SETTER; then
+  GS_CMD="$PYTHON -m real_robot.laptop.goal_setter --config $CONFIG --n-robots $N_ROBOTS"
+  tmux new-window -t "$TMUX_SESSION" -n goal_setter
+  tmux send-keys -t "$TMUX_SESSION:goal_setter" "$GS_CMD" Enter
   tmux select-window -t "$TMUX_SESSION:mocap"
 fi
 

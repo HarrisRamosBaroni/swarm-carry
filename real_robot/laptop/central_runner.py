@@ -58,8 +58,10 @@ class CentralRunner:
         for r in cfg["robots"][:n_robots]:
             self._sub.connect(f"tcp://{r['ip']}:{r['pub_port']}")
         self._sub.connect(f"tcp://{cfg['laptop']['ip']}:{cfg['laptop']['mocap_pub_port']}")
+        self._sub.connect(f"tcp://localhost:{cfg['laptop']['goal_pub_port']}")
         self._sub.setsockopt_string(zmq.SUBSCRIBE, "force")
         self._sub.setsockopt_string(zmq.SUBSCRIBE, "pose")
+        self._sub.setsockopt_string(zmq.SUBSCRIBE, "goal")
 
         self._pub = ctx.socket(zmq.PUB)
         self._pub.bind(f"tcp://*:{cfg['laptop']['central_pub_port']}")
@@ -98,7 +100,16 @@ class CentralRunner:
         while dict(poller.poll(timeout=0)):
             _, raw = self._sub.recv_multipart()
             d = unpack(raw)
-            if d.get("t") != "pose":
+            t = d.get("t")
+            if t == "goal":
+                new_goal = np.array([d["x"], d["y"], d["theta"]])
+                new_tol = float(d["tol"])
+                self._goal = new_goal
+                self._goal_tol = new_tol
+                print(f"[central] goal updated to ({d['x']:.2f}, {d['y']:.2f}, "
+                      f"{d['theta']:.2f} rad) tol={new_tol:.2f} m")
+                continue
+            if t != "pose":
                 continue
             rid = d.get("id", 0)
             x, y, theta, ts = d["x"], d["y"], d["theta"], d["ts"]
