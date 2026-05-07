@@ -1,14 +1,40 @@
 """
-Decentralised force-feedback factor-graph-based controller 
+Run a simulation of the different controllers and collect metrics to determine 
+which one is better
 
-Mirrors experiments/mrcap_fg/run_experiment.py but with the decentralised 
-force-feedback controller driven by a swappable communication backend.
+Metrics:
+- time to reach goal (0.3m distance to goal threshold)
+- messages (GBP)
+- solve time (ms)
+- success (boolean)
 
-  python run_experiment.py                          # default: n=2,3,4  sim backend
-  python run_experiment.py --n-values 2,4 --distance 3.0
-  python run_experiment.py --backend async --dropout 0.3
-  python run_experiment.py --n-values 3 --vis       # MuJoCo viewer for first run
+Controllers tested:
+- Force decentralised
+- Force centralised
+- DrCAP (=> centralised/decentralised ?)
+- MRCAP
+- Forceless centralised
+
+Distance:
+- 5m
+- 10m
+- 20m
+
+Robots:
+- 2
+- 4
+- 6
+- 8
+
+Horizon (N):
+- 5
+- 15
+- 30
+
+Dropout msgs ?
+GBP max iter ?
 """
+
 
 import argparse
 import json
@@ -20,13 +46,40 @@ import numpy as np
 
 from swarmlib.simulation.mecanum_env import MecanumTransportEnv
 from swarmlib.simulation.generate_mecanum_scene import face_contact_formation
-from swarmlib.controllers import ForceDistributedController
+from swarmlib.controllers import (
+    MRCapController,
+    # DRCapController,
+    DRCapDistributedController,
+    ForceCentralisedControllerCVel,
+    ForceDistributedController,
+    ForcelessCentralisedControllerCVel,
+
+)
 from swarmlib.communication.backend import (
     SimulatedBackend,
     AsyncSimulatedBackend,
     create_full_topology,
     create_ring_topology,
 )
+
+
+# values
+ControllersList = [MRCapController, DRCapDistributedController, ForceCentralisedControllerCVel,
+                   ForceDistributedController, ForcelessCentralisedControllerCVel]
+
+DecentralisedControllers = [DRCapDistributedController, ForceDistributedController]
+
+distances_to_goal = [i * 3 for i in range(1,11)]
+
+numbers_of_robots = [2,3,4] #TODO look into getting more robots in formation, currently max of 4
+
+horizons = [i * 3 for i in range(1,11)]
+
+#defaults
+default_distance = 5.0
+default_robot_num = 2
+default_horizon = 15
+
 
 
 # ---------------------------------------------------------------------------
@@ -75,8 +128,10 @@ def run_single(
     topology_kind: str,
     dropout: float,
     gbp_max_iters: int,
+    ChosenController,
     visualise: bool = False,
     sim_speed: float = 1.0,
+    
 ) -> dict:
     goal = (distance, 0.0, 0.0)
     payload_size = (PAYLOAD_HX, PAYLOAD_HY, PAYLOAD_HZ)
@@ -98,23 +153,42 @@ def run_single(
 
     backend = build_backend(backend_kind, n_robots, topology_kind, dropout, seed=42)
 
-    controller = ForceDistributedController(
-        num_robots=n_robots,
-        formation=formation,
-        backend=backend,
-        config={
-            "horizon": horizon,
-            "v_max": v_max,
-            "sigma_x": 0.5,
-            "sigma_u": 0.3,
-            "sigma_anchor": 0.01,
-            "sigma_r2r": 0.05,
-            "sigma_pull_in": 0.3,
-            "sigma_consensus": 0.1,
-            "gbp_max_iters": gbp_max_iters,
-            "gbp_tol": 1e-3,
-        },
-    )
+    if ChosenController not in DecentralisedControllers:
+        controller = ChosenController(
+            num_robots=n_robots,
+            formation=formation,
+            config={
+                "horizon": horizon,
+                "v_max": v_max,
+                "sigma_x": 0.5,
+                "sigma_u": 0.3,
+                "sigma_anchor": 0.01,
+                "sigma_r2r": 0.05,
+                "sigma_pull_in": 0.3,
+                "sigma_consensus": 0.1,
+                "gbp_max_iters": gbp_max_iters,
+                "gbp_tol": 1e-3,
+            },
+        )
+
+    else:
+        controller = ChosenController(
+            num_robots=n_robots,
+            formation=formation,
+            backend=backend,
+            config={
+                "horizon": horizon,
+                "v_max": v_max,
+                "sigma_x": 0.5,
+                "sigma_u": 0.3,
+                "sigma_anchor": 0.01,
+                "sigma_r2r": 0.05,
+                "sigma_pull_in": 0.3,
+                "sigma_consensus": 0.1,
+                "gbp_max_iters": gbp_max_iters,
+                "gbp_tol": 1e-3,
+            },
+        )
 
     obs = env.reset()
     controller.reset()
@@ -159,8 +233,9 @@ def run_single(
             forces=forces,
         )
         solve_times.append(controller.get_solve_time())
-        gbp_iters_log.append(controller.get_gbp_iters())
-
+        if ChosenController in DecentralisedControllers:
+            gbp_iters_log.append(controller.get_gbp_iters())
+        
         obs = env.step(controls)
 
         step_torques = np.array([[env.data.ctrl[aid] for aid in ids]
@@ -217,7 +292,7 @@ def run_single(
         "solve_time_std_ms":  float(np.std(solve_times)  * 1e3),
         "solve_time_max_ms":  float(np.max(solve_times)  * 1e3),
         "gbp_iters_mean":     float(np.mean(gbp_iters_log)),
-        "gbp_iters_max":      int(np.max(gbp_iters_log)),
+        "gbp_iters_max":      int(np.max(gbp_iters_log)) if ChosenController in DecentralisedControllers else np.nan,
         "messages_sent":      int(comm_stats.get("messages_sent", 0)),
         "messages_dropped":   int(comm_stats.get("messages_dropped", 0)),
         "n_steps":            len(solve_times),
@@ -240,9 +315,9 @@ def main():
     parser = argparse.ArgumentParser(description="DR.CAP distributed FG experiment")
     parser.add_argument("--n-values", default="2,3,4",
                         help="Comma-separated robot counts (default: 2,3,4)")
-    parser.add_argument("--distance", type=float, default=5.0)
-    parser.add_argument("--max-time", type=float, default=60.0)
-    parser.add_argument("--horizon", type=int, default=15)
+    parser.add_argument("--distances", type=float, default=distances_to_goal)
+    parser.add_argument("--max-time", type=float, default=300.0)
+    parser.add_argument("--horizons", type=int, default=horizons)
     parser.add_argument("--v-max", type=float, default=0.25)
     parser.add_argument("--payload-mass", type=float, default=2.0)
     parser.add_argument("--threshold", type=float, default=0.3)
@@ -256,53 +331,151 @@ def main():
     parser.add_argument("--gbp-max-iters", type=int, default=30,
                         help="Max GBP iterations per control step (default: 30)")
     parser.add_argument("--vis", action="store_true")
-    parser.add_argument("--sim-speed", type=float, default=0.5)
+    parser.add_argument("--sim-speed", type=float, default=1)
     args = parser.parse_args()
 
     n_values = [int(x.strip()) for x in args.n_values.split(",")]
 
-    print(f"\n{'='*60}")
-    print(f"DR.CAP Distributed Factor-Graph Experiment")
-    print(f"  robots:       {n_values}")
-    print(f"  distance:     {args.distance} m")
-    print(f"  horizon:      {args.horizon}")
-    print(f"  v_max:        {args.v_max} m/s")
-    print(f"  backend:      {args.backend}")
-    print(f"  topology:     {args.topology}")
-    print(f"  dropout:      {args.dropout}")
-    print(f"  gbp_max_iter: {args.gbp_max_iters}")
-    print(f"{'='*60}\n")
+    # print(f"\n{'='*60}")
+    # print(f"DR.CAP Distributed Factor-Graph Experiment")
+    # print(f"  robots:       {n_values}")
+    # print(f"  distance:     {args.distance} m")
+    # print(f"  horizon:      {args.horizon}")
+    # print(f"  v_max:        {args.v_max} m/s")
+    # print(f"  backend:      {args.backend}")
+    # print(f"  topology:     {args.topology}")
+    # print(f"  dropout:      {args.dropout}")
+    # print(f"  gbp_max_iter: {args.gbp_max_iters}")
+    # print(f"{'='*60}\n")
 
     all_results = []
 
+    #TEST NUMBER OF ROBOTS
     for idx, n in enumerate(n_values):
-        print(f"Running n={n} ...", flush=True)
-        result = run_single(
-            n_robots=n,
-            distance=args.distance,
-            max_time=args.max_time,
-            success_threshold=args.threshold,
-            horizon=args.horizon,
-            v_max=args.v_max,
-            payload_mass=args.payload_mass,
-            backend_kind=args.backend,
-            topology_kind=args.topology,
-            dropout=args.dropout,
-            gbp_max_iters=args.gbp_max_iters,
-            visualise=args.vis and idx == 0,
-            sim_speed=args.sim_speed,
-        )
-        all_results.append(result)
+        for controller in ControllersList:
+            print(f"Running n={n} with controller:{controller} ...", flush=True)
+            result = run_single(
+                n_robots=n,
+                distance=default_distance,
+                max_time=args.max_time,
+                success_threshold=args.threshold,
+                horizon=default_horizon,
+                v_max=args.v_max,
+                payload_mass=args.payload_mass,
+                backend_kind=args.backend,
+                topology_kind=args.topology,
+                dropout=args.dropout,
+                gbp_max_iters=args.gbp_max_iters,
+                visualise=args.vis and idx == 0,
+                sim_speed=args.sim_speed,
+                ChosenController=controller
+            )
+            all_results.append(result)
 
-        status = "SUCCESS" if result["success"] else "TIMEOUT"
-        print(
-            f"  [{status}]  final_error={result['final_error_m']:.3f} m"
-            f"  deviation={result['mean_deviation_m']:.3f} m"
-            f"  solve={result['solve_time_mean_ms']:.1f}±{result['solve_time_std_ms']:.1f} ms"
-            f"  gbp_iters_mean={result['gbp_iters_mean']:.1f}"
-            f"  msgs={result['messages_sent']}"
-            f"  (dropped={result['messages_dropped']})"
-        )
+            status = "SUCCESS" if result["success"] else "TIMEOUT"
+            print(
+                f"  [{status}]  final_error={result['final_error_m']:.3f} m"
+                f"  deviation={result['mean_deviation_m']:.3f} m"
+                f"  solve={result['solve_time_mean_ms']:.1f}±{result['solve_time_std_ms']:.1f} ms"
+                f"  gbp_iters_mean={result['gbp_iters_mean']:.1f}"
+                f"  msgs={result['messages_sent']}"
+                f"  (dropped={result['messages_dropped']})"
+            )
+
+
+    #TEST DISTANCES TO GOAL
+    for dist in distances_to_goal:
+        for controller in ControllersList:
+            print(f"Running distance={dist} with controller:{controller} ...", flush=True)
+            result = run_single(
+                n_robots=default_robot_num,
+                distance=dist,
+                max_time=args.max_time,
+                success_threshold=args.threshold,
+                horizon=default_horizon,
+                v_max=args.v_max,
+                payload_mass=args.payload_mass,
+                backend_kind=args.backend,
+                topology_kind=args.topology,
+                dropout=args.dropout,
+                gbp_max_iters=args.gbp_max_iters,
+                visualise=args.vis and idx == 0,
+                sim_speed=args.sim_speed,
+                ChosenController=controller
+            )
+            all_results.append(result)
+
+            status = "SUCCESS" if result["success"] else "TIMEOUT"
+            print(
+                f"  [{status}]  final_error={result['final_error_m']:.3f} m"
+                f"  deviation={result['mean_deviation_m']:.3f} m"
+                f"  solve={result['solve_time_mean_ms']:.1f}±{result['solve_time_std_ms']:.1f} ms"
+                f"  gbp_iters_mean={result['gbp_iters_mean']:.1f}"
+                f"  msgs={result['messages_sent']}"
+                f"  (dropped={result['messages_dropped']})"
+            )
+
+    #TEST HORIZONS
+    for horizon in horizons:
+        for controller in ControllersList:
+            print(f"Running horizon={horizon} with controller:{controller} ...", flush=True)
+            result = run_single(
+                n_robots=default_robot_num,
+                distance=dist,
+                max_time=args.max_time,
+                success_threshold=args.threshold,
+                horizon=horizon,
+                v_max=args.v_max,
+                payload_mass=args.payload_mass,
+                backend_kind=args.backend,
+                topology_kind=args.topology,
+                dropout=args.dropout,
+                gbp_max_iters=args.gbp_max_iters,
+                visualise=args.vis and idx == 0,
+                sim_speed=args.sim_speed,
+                ChosenController=controller
+            )
+            all_results.append(result)
+
+            status = "SUCCESS" if result["success"] else "TIMEOUT"
+            print(
+                f"  [{status}]  final_error={result['final_error_m']:.3f} m"
+                f"  deviation={result['mean_deviation_m']:.3f} m"
+                f"  solve={result['solve_time_mean_ms']:.1f}±{result['solve_time_std_ms']:.1f} ms"
+                f"  gbp_iters_mean={result['gbp_iters_mean']:.1f}"
+                f"  msgs={result['messages_sent']}"
+                f"  (dropped={result['messages_dropped']})"
+            )
+
+    # for idx, n in enumerate(n_values):
+    #     print(f"Running n={n} ...", flush=True)
+    #     result = run_single(
+    #         n_robots=n,
+    #         distance=args.distance,
+    #         max_time=args.max_time,
+    #         success_threshold=args.threshold,
+    #         horizon=args.horizon,
+    #         v_max=args.v_max,
+    #         payload_mass=args.payload_mass,
+    #         backend_kind=args.backend,
+    #         topology_kind=args.topology,
+    #         dropout=args.dropout,
+    #         gbp_max_iters=args.gbp_max_iters,
+    #         visualise=args.vis and idx == 0,
+    #         sim_speed=args.sim_speed,
+    #         ChosenController=ForceDistributedController
+    #     )
+    #     all_results.append(result)
+
+        # status = "SUCCESS" if result["success"] else "TIMEOUT"
+        # print(
+        #     f"  [{status}]  final_error={result['final_error_m']:.3f} m"
+        #     f"  deviation={result['mean_deviation_m']:.3f} m"
+        #     f"  solve={result['solve_time_mean_ms']:.1f}±{result['solve_time_std_ms']:.1f} ms"
+        #     f"  gbp_iters_mean={result['gbp_iters_mean']:.1f}"
+        #     f"  msgs={result['messages_sent']}"
+        #     f"  (dropped={result['messages_dropped']})"
+        # )
 
     # Summary table
     print(f"\n{'='*90}")
@@ -340,6 +513,6 @@ def main():
     out_path.write_text(json.dumps(out, indent=2))
     print(f"Results saved to {out_path}")
 
-
 if __name__ == "__main__":
     main()
+
