@@ -1,3 +1,14 @@
+"""
+Ensure your network.yaml is correct before running.
+
+
+Usage:
+python real_robot\laptop\record.py
+
+"""
+
+
+
 import zmq
 import yaml
 import csv
@@ -69,33 +80,60 @@ def main():
                 events = dict(poller.poll(100))  # timeout in ms
 
                 if socket in events:
-                    # msg = socket.recv()
+                
+                    # msg_parts = socket.recv_multipart()
 
                     # timestamp = datetime.utcnow().isoformat()
 
-                    # try:
-                    #     msg_str = msg.decode("utf-8")
-                    # except UnicodeDecodeError:
-                    #     msg_str = str(msg)
+                    # if len(msg_parts) == 2:
+                    #     topic = msg_parts[0].decode("utf-8")
 
-                    # writer.writerow([timestamp, "unknown", msg_str])
+                    #     try:
+                    #         data = msgpack.unpackb(msg_parts[1], raw=False)
+                    #     except Exception:
+                    #         data = str(msg_parts[1])
+
+                    # else:
+                    #     topic = "unknown"
+                    #     data = str(msg_parts)
+
+                    # writer.writerow([timestamp, topic, data])
                     # f.flush()
 
                     msg_parts = socket.recv_multipart()
-
                     timestamp = datetime.utcnow().isoformat()
 
-                    if len(msg_parts) == 2:
-                        topic = msg_parts[0].decode("utf-8")
+                    topic = None
+                    data = None
 
-                        try:
-                            data = msgpack.unpackb(msg_parts[1], raw=False)
-                        except Exception:
-                            data = str(msg_parts[1])
+                    try:
+                        if len(msg_parts) == 1:
+                            # No topic, just payload
+                            try:
+                                unpacked = msgpack.unpackb(msg_parts[0], raw=False)
+                                topic = unpacked.get("t", "no_topic")
+                                data = unpacked
+                            except Exception:
+                                topic = "raw"
+                                data = str(msg_parts[0])
 
-                    else:
-                        topic = "unknown"
-                        data = str(msg_parts)
+                        elif len(msg_parts) == 2:
+                            # Standard topic + payload
+                            topic = msg_parts[0].decode("utf-8")
+
+                            try:
+                                data = msgpack.unpackb(msg_parts[1], raw=False)
+                            except Exception:
+                                data = str(msg_parts[1])
+
+                        else:
+                            # Unexpected format
+                            topic = "multi_part"
+                            data = str(msg_parts)
+
+                    except Exception as e:
+                        topic = "error"
+                        data = str(e)
 
                     writer.writerow([timestamp, topic, data])
                     f.flush()
