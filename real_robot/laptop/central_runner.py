@@ -16,12 +16,12 @@ The controller is constructed on the first tick that has full mocap data.
 Robot-to-payload formation offsets are derived from actual mocap poses at
 that moment, so no payload geometry parameters are needed.
 
-TEAM: swap MRCapController for any other centralised controller that follows
-the BaseController.compute_control(payload, robots, goal, dt, forces) API.
+Use goal_setter.py (launched via launch.sh --goal-setter) to update goals and
+send emergency stops without restarting. TEAM: swap MRCapController for any
+other centralised controller that follows the
+BaseController.compute_control(payload, robots, goal, dt, forces) API.
 """
 import argparse
-import subprocess
-import sys
 import time
 
 import yaml
@@ -37,7 +37,7 @@ PAYLOAD_ID = -1  # sentinel id used by mocap_bridge for the payload rigid body
 
 class CentralRunner:
     def __init__(self, network_config: dict, n_robots: int,
-                 goal: np.ndarray,
+                 goal,  # np.ndarray or None — None means hold until goal_setter sends one
                  control_hz: float = 20.0,
                  horizon: int = 15,
                  v_max: float = 0.25,
@@ -45,8 +45,8 @@ class CentralRunner:
                  relative_goal: bool = False,
                  goal_tol: float = 0.15):
         self._n = n_robots
-        self._goal = goal          # absolute if not relative_goal; offset if relative_goal
-        self._goal_offset = goal if relative_goal else None  # resolved on first tick
+        self._goal = goal          # None until set; absolute or offset depending on relative_goal
+        self._goal_offset = goal if (relative_goal and goal is not None) else None
         self._dt = 1.0 / control_hz
         self._use_gt_payload = use_gt_payload
         self._goal_tol = goal_tol
@@ -62,6 +62,7 @@ class CentralRunner:
         self._sub.setsockopt_string(zmq.SUBSCRIBE, "force")
         self._sub.setsockopt_string(zmq.SUBSCRIBE, "pose")
         self._sub.setsockopt_string(zmq.SUBSCRIBE, "goal")
+        self._sub.setsockopt_string(zmq.SUBSCRIBE, "estop")
 
         self._pub = ctx.socket(zmq.PUB)
         self._pub.bind(f"tcp://*:{cfg['laptop']['central_pub_port']}")
@@ -89,10 +90,14 @@ class CentralRunner:
         }
 
         payload_mode = "gt-mocap" if use_gt_payload else "centroid-estimator"
-        goal_mode = "relative" if relative_goal else "absolute"
         pub_port = cfg['laptop']['central_pub_port']
-        print(f"[central] ready — n_robots={n_robots}, goal={goal} ({goal_mode}), "
-              f"payload={payload_mode}, pub_port={pub_port}")
+        if goal is not None:
+            goal_mode = "relative" if relative_goal else "absolute"
+            print(f"[central] ready — n_robots={n_robots}, goal={goal} ({goal_mode}), "
+                  f"payload={payload_mode}, pub_port={pub_port}")
+        else:
+            print(f"[central] ready — n_robots={n_robots}, goal=<waiting for goal_setter>, "
+                  f"payload={payload_mode}, pub_port={pub_port}")
 
         time.sleep(0.2)
 
@@ -101,13 +106,16 @@ class CentralRunner:
             _, raw = self._sub.recv_multipart()
             d = unpack(raw)
             t = d.get("t")
+            if t == "estop":
+                print("[central] ESTOP received — sending zero velocities")
+                self._send_zeros()
+                raise KeyboardInterrupt
             if t == "goal":
-                new_goal = np.array([d["x"], d["y"], d["theta"]])
-                new_tol = float(d["tol"])
-                self._goal = new_goal
-                self._goal_tol = new_tol
+                self._goal = np.array([d["x"], d["y"], d["theta"]])
+                self._goal_tol = float(d["tol"])
+                self._printed_waiting = False  # re-evaluate what's still missing
                 print(f"[central] goal updated to ({d['x']:.2f}, {d['y']:.2f}, "
-                      f"{d['theta']:.2f} rad) tol={new_tol:.2f} m")
+                      f"{d['theta']:.2f} rad) tol={self._goal_tol:.2f} m")
                 continue
             if t != "pose":
                 continue
@@ -172,12 +180,17 @@ class CentralRunner:
 
                 now = time.monotonic()
                 if now >= next_tick:
-                    ready = self._got_state.all() and (
-                        not self._use_gt_payload or self._payload_pose is not None
+                    ready = (
+                        self._goal is not None
+                        and self._got_state.all()
+                        and (not self._use_gt_payload or self._payload_pose is not None)
                     )
                     if not ready and not self._printed_waiting:
-                        missing = [f"robot {i}" for i in range(self._n)
-                                   if not self._got_state[i]]
+                        missing = []
+                        if self._goal is None:
+                            missing.append("goal (press Send Goal in goal_setter or pass --goal)")
+                        missing += [f"robot {i}" for i in range(self._n)
+                                    if not self._got_state[i]]
                         if self._use_gt_payload and self._payload_pose is None:
                             missing.append("payload")
                         print(f"[central] waiting for: {', '.join(missing)}")
@@ -252,7 +265,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="real_robot/config/network.yaml")
     parser.add_argument("--n-robots", type=int, default=2)
-    parser.add_argument("--goal", type=float, nargs=3, default=[5.0, 0.0, 0.0])
+    parser.add_argument("--goal", type=float, nargs=3, default=None,
+                        help="Initial goal (x y theta in m/rad). Omit to hold until "
+                             "goal_setter sends the first goal.")
     parser.add_argument("--control-hz", type=float, default=20.0)
     parser.add_argument("--horizon", type=int, default=15)
     parser.add_argument("--v-max", type=float, default=0.25)
@@ -267,28 +282,13 @@ def main():
     parser.add_argument("--goal-tol", type=float, default=0.15,
                         help="Stop when payload is within this distance (metres) of the goal. "
                              "Default: 0.15 m.")
-    parser.add_argument("--viewer", action="store_true",
-                        help="Launch live_viewer.py in a subprocess alongside the controller.")
     args = parser.parse_args()
 
     with open(args.config) as f:
         cfg = yaml.safe_load(f)
 
-    if args.viewer:
-        viewer_cmd = [
-            sys.executable,
-            "real_robot/laptop/live_viewer.py",
-            "--config", args.config,
-            "--n-robots", str(args.n_robots),
-            "--goal-tol", str(args.goal_tol),
-        ]
-        if args.goal:
-            viewer_cmd += ["--goal"] + [str(v) for v in args.goal]
-        subprocess.Popen(viewer_cmd)
-        print("[central] live viewer launched")
-
     runner = CentralRunner(
-        cfg, args.n_robots, np.array(args.goal),
+        cfg, args.n_robots, np.array(args.goal) if args.goal is not None else None,
         control_hz=args.control_hz,
         horizon=args.horizon,
         v_max=args.v_max,

@@ -25,7 +25,7 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from matplotlib.widgets import Slider, Button
 
-from real_robot.transport.messages import goal_msg
+from real_robot.transport.messages import goal_msg, estop_msg
 
 PAYLOAD_ID = -1
 ROBOT_COLORS = ["tab:blue", "tab:orange", "tab:green", "tab:red",
@@ -216,21 +216,9 @@ def main():
         fig.canvas.draw_idle()
 
     def _stop(_event=None):
-        with state.lock:
-            pp = state.payload_pose.copy()
-        if np.isnan(pp[0]):
-            sx, sy, sth = 0.0, 0.0, 0.0
-            print("[goal_setter] stop: no payload pose yet, stopping at (0,0,0)")
-        else:
-            sx, sy, sth = float(pp[0]), float(pp[1]), float(pp[2])
-            print(f"[goal_setter] stop at current payload ({sx:.3f}, {sy:.3f})")
-        pub.send_multipart([b"goal", goal_msg(sx, sy, sth, 1.0)])
-        _goal.update({"x": sx, "y": sy, "theta": sth, "tol": 1.0, "sent": True})
-        _block_slider[0] = True
-        sl_x.set_val(sx); sl_y.set_val(sy); sl_th.set_val(sth); sl_tol.set_val(1.0)
-        _block_slider[0] = False
-        sent_text.set_text(f"STOP sent: ({sx:.2f}, {sy:.2f})")
-        _refresh_marker()
+        pub.send_multipart([b"estop", estop_msg()])
+        print("[goal_setter] ESTOP sent")
+        sent_text.set_text("ESTOP sent")
         fig.canvas.draw_idle()
 
     btn_send.on_clicked(_send)

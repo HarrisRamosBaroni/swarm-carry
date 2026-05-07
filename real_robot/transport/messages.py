@@ -40,6 +40,10 @@ def force_msg(robot_id: int, readings: list) -> bytes:
     })
 
 
+def estop_msg() -> bytes:
+    return msgpack.packb({"t": "estop", "ts": time.time()})
+
+
 def goal_msg(x: float, y: float, theta: float, tol: float) -> bytes:
     return msgpack.packb({
         "t": "goal",

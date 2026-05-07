@@ -30,7 +30,7 @@ PAYLOAD_ID = -1  # sentinel id mocap_bridge uses for the payload rigid body
 
 class AgentRunner:
     def __init__(self, robot_id: int, neighbor_ids: list,
-                 network_config: dict, goal: np.ndarray,
+                 network_config: dict, goal,  # np.ndarray or None
                  n_robots: int,
                  control_hz: float = 20.0,
                  gbp_async: bool = False,
@@ -61,6 +61,7 @@ class AgentRunner:
         self._sub.setsockopt_string(zmq.SUBSCRIBE, "pose")
         self._sub.setsockopt_string(zmq.SUBSCRIBE, "cmd")
         self._sub.setsockopt_string(zmq.SUBSCRIBE, "goal")
+        self._sub.setsockopt_string(zmq.SUBSCRIBE, "estop")
 
         # Also subscribe to neighbor force for decentralised controller
         if not passive:
@@ -155,8 +156,14 @@ class AgentRunner:
                 topic_bytes, raw = self._sub.recv_multipart()
                 d = unpack(raw)
                 t = d.get("t")
-                if t == "goal":
+                if t == "estop":
+                    print(f"[agent {self._id}] ESTOP received — stopping")
+                    self._ros.send_cmd(0.0, 0.0)
+                    self._running = False
+                    break
+                elif t == "goal":
                     self._goal = np.array([d["x"], d["y"], d["theta"]])
+                    self._printed_waiting = False  # re-evaluate what's still missing
                     print(f"[agent {self._id}] goal updated to "
                           f"({d['x']:.2f}, {d['y']:.2f}, {d['theta']:.2f} rad) "
                           f"tol={d['tol']:.2f} m")
@@ -184,14 +191,16 @@ class AgentRunner:
                 self._pub.send_multipart([b"force", raw_force])
 
                 if not self._passive:
-                    # All poses come from mocap bridge. Skip tick until own
-                    # pose, payload pose, and all peer poses have arrived.
+                    # Skip tick until goal, own pose, payload pose, and all peers have arrived.
                     own = self._poses.get(self._id)
                     pp = self._poses.get(PAYLOAD_ID)
                     all_peers = all(i in self._poses for i in range(self._n_robots))
-                    if own is None or pp is None or not all_peers:
+                    if self._goal is None or own is None or pp is None or not all_peers:
                         if not self._printed_waiting:
-                            missing = ([f"own(id={self._id})"] if own is None else [])
+                            missing = []
+                            if self._goal is None:
+                                missing.append("goal (press Send Goal in goal_setter)")
+                            missing += ([f"own(id={self._id})"] if own is None else [])
                             missing += (["payload"] if pp is None else [])
                             missing += [f"peer {i}" for i in range(self._n_robots)
                                         if i not in self._poses]
@@ -201,7 +210,7 @@ class AgentRunner:
                         time.sleep(max(0.0, next_tick - time.monotonic()))
                         continue
                     if self._printed_waiting:
-                        print(f"[agent {self._id}] all poses received, starting control")
+                        print(f"[agent {self._id}] all states received, starting control")
                         self._printed_waiting = False
 
                     if self.controller is None:
@@ -265,7 +274,9 @@ def main():
     parser.add_argument("--config", default="/home/ubuntu/network.yaml")
     parser.add_argument("--id", type=int, required=True)
     parser.add_argument("--neighbors", type=int, nargs="*", default=[])
-    parser.add_argument("--goal", type=float, nargs=3, default=[5.0, 0.0, 0.0])
+    parser.add_argument("--goal", type=float, nargs=3, default=None,
+                        help="Initial goal (x y theta in m/rad). Omit to hold until "
+                             "goal_setter sends the first goal.")
     parser.add_argument("--n-robots", type=int, default=1,
                         help="Total robots in formation. Required for decentralised "
                              "mode; ignored in --passive mode.")
@@ -288,7 +299,7 @@ def main():
         robot_id=args.id,
         neighbor_ids=args.neighbors,
         network_config=cfg,
-        goal=np.array(args.goal),
+        goal=np.array(args.goal) if args.goal is not None else None,
         n_robots=args.n_robots,
         control_hz=args.control_hz,
         gbp_async=args.gbp_async,
