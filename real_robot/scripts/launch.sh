@@ -30,6 +30,10 @@
 
 set -euo pipefail
 
+# Source per-developer overrides (PYTHON, MOCAP_SERVER, etc.) if present.
+_DEV_ENV="$(dirname "$0")/../config/dev.env"
+[[ -f "$_DEV_ENV" ]] && source "$_DEV_ENV"
+
 CONFIG="${CONFIG:-real_robot/config/network.yaml}"
 MOCAP_SERVER="${MOCAP_SERVER:-192.168.1.25}"
 PYTHON="${PYTHON:-python3}"

@@ -33,5 +33,7 @@ real_robot/scripts/**.so
 
 experiments/mrcap_fg/results.json
 swarmlib/sensors/force/config.yaml
+real_robot/config/dev.env
+real_robot/config/network.yaml
 
 **/results.json

@@ -46,9 +46,18 @@ PhaseSpace rigid body IDs are defined in the PhaseSpace web UI and mapped to app
 
 ## One-time setup
 
-**1. Fill in IPs** — edit `real_robot/config/network.yaml` with the actual IPs of each robot and the laptop.
+**1. Fill in IPs** — `network.yaml` is gitignored; copy the example and fill in IPs:
+```bash
+cp real_robot/config/network.yaml.example real_robot/config/network.yaml
+```
 
-**2. Calibrate load cells** (run once per robot on the myAGV):
+**2. (Optional) set your Python venv** — `dev.env` is gitignored; copy the example and set `PYTHON`:
+```bash
+cp real_robot/config/dev.env.example real_robot/config/dev.env
+```
+`launch.sh` sources it automatically if present.
+
+**3. Calibrate load cells** (run once per robot on the myAGV):
 ```bash
 python swarmlib/sensors/force/calibrate_vals.py
 ```
