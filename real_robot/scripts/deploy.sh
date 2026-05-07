@@ -12,6 +12,7 @@
 #   --launch              start (or restart) the tmux session on each robot
 #   --reload              shorthand for --yaml --launch (yaml changed, no pull needed)
 #   --all                 shorthand for --yaml --pull --launch
+#   --stop                kill the tmux session on each robot (ros + agent)
 #
 # Extra agent args appended after mode-derived args:
 #   AGENT_EXTRA_ARGS="--gbp-async" ./deploy.sh --mode decentralised --launch
@@ -36,6 +37,7 @@ MODE="central"
 DO_YAML=false
 DO_PULL=false
 DO_LAUNCH=false
+DO_STOP=false
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -45,6 +47,7 @@ while [[ $# -gt 0 ]]; do
     --launch) DO_LAUNCH=true; shift ;;
     --reload) DO_YAML=true; DO_LAUNCH=true; shift ;;
     --all)    DO_YAML=true; DO_PULL=true; DO_LAUNCH=true; shift ;;
+    --stop)   DO_STOP=true; shift ;;
     *) echo "unknown arg: $1"; exit 1 ;;
   esac
 done
@@ -54,7 +57,7 @@ if [[ "$MODE" != "central" && "$MODE" != "decentralised" ]]; then
   exit 1
 fi
 
-if ! $DO_YAML && ! $DO_PULL && ! $DO_LAUNCH; then
+if ! $DO_YAML && ! $DO_PULL && ! $DO_LAUNCH && ! $DO_STOP; then
   echo "Usage: $0 --mode [central|decentralised] [--yaml] [--pull] [--launch] [--all]"
   exit 1
 fi
@@ -94,6 +97,11 @@ for i in "${!ROBOT_IDS[@]}"; do
     BASE_ARGS="--passive"
   fi
   ROBOT_ARGS="${BASE_ARGS}${AGENT_EXTRA_ARGS:+ $AGENT_EXTRA_ARGS}"
+
+  if $DO_STOP; then
+    echo "    [stop] killing tmux session '$TMUX_SESSION'"
+    ssh "$REMOTE_USER@$IP" "tmux kill-session -t $TMUX_SESSION 2>/dev/null && echo stopped || echo not running"
+  fi
 
   if $DO_YAML; then
     echo "    [yaml] syncing $CONFIG -> $REMOTE_USER@$IP:$REMOTE_CONFIG"
