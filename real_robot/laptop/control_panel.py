@@ -31,6 +31,7 @@ PAYLOAD_ID = -1
 ROBOT_COLORS = ["tab:blue", "tab:orange", "tab:green", "tab:red",
                 "tab:purple", "tab:brown", "tab:pink", "tab:gray"]
 ARROW_LEN = 0.15
+PAYLOAD_ARROW_LEN = 0.45
 ROBOT_RADIUS = 0.2
 TRAIL_LEN = 500
 
@@ -102,7 +103,7 @@ def main():
 
     ax_sx  = fig.add_axes([0.15, 0.25, 0.70, 0.025])
     ax_sy  = fig.add_axes([0.15, 0.20, 0.70, 0.025])
-    ax_sth = fig.add_axes([0.15, 0.15, 0.70, 0.025])
+    ax_sth = fig.add_axes([0.15, 0.15, 0.54, 0.025])
     ax_st  = fig.add_axes([0.15, 0.10, 0.70, 0.025])
 
     sl_x   = Slider(ax_sx,  "Goal X (m)",    -5.0, 10.0, valinit=0.0, color="gold")
@@ -110,10 +111,12 @@ def main():
     sl_th  = Slider(ax_sth, "Goal θ (rad)", -3.14,  3.14, valinit=0.0, color="gold")
     sl_tol = Slider(ax_st,  "Tolerance (m)",  0.01,  1.0, valinit=args.goal_tol, color="lightblue")
 
-    ax_btn_send = fig.add_axes([0.58, 0.025, 0.28, 0.05])
-    ax_btn_stop = fig.add_axes([0.15, 0.025, 0.28, 0.05])
-    btn_send = Button(ax_btn_send, "Send Goal",   color="lightgreen", hovercolor="#00cc44")
-    btn_stop = Button(ax_btn_stop, "Stop Robots", color="salmon",     hovercolor="#cc2200")
+    ax_btn_send  = fig.add_axes([0.58, 0.025, 0.28, 0.05])
+    ax_btn_stop  = fig.add_axes([0.15, 0.025, 0.28, 0.05])
+    ax_btn_match = fig.add_axes([0.71, 0.135, 0.16, 0.038])
+    btn_send  = Button(ax_btn_send,  "Send Goal",   color="lightgreen", hovercolor="#00cc44")
+    btn_stop  = Button(ax_btn_stop,  "Stop Robots", color="salmon",     hovercolor="#cc2200")
+    btn_match = Button(ax_btn_match, "Match θ",     color="lightyellow", hovercolor="#ffee55")
 
     # -------------------------------------------------------------------------
     # Map artists
@@ -153,6 +156,10 @@ def main():
                         transform=ax.transAxes, fontsize=9, va="top", ha="right",
                         color="gray",
                         bbox=dict(boxstyle="round,pad=0.2", fc="white", alpha=0.75))
+    payload_theta_text = ax.text(0.50, 0.97, "payload θ: —",
+                                 transform=ax.transAxes, fontsize=10, va="top", ha="center",
+                                 color="black", fontweight="bold",
+                                 bbox=dict(boxstyle="round,pad=0.3", fc="lightyellow", alpha=0.9))
 
     ax.legend(loc="lower right", fontsize=8)
 
@@ -221,8 +228,15 @@ def main():
         sent_text.set_text("ESTOP sent")
         fig.canvas.draw_idle()
 
+    def _match_theta(_event=None):
+        with state.lock:
+            pp = state.payload_pose.copy()
+        if not np.isnan(pp[2]):
+            sl_th.set_val(pp[2])
+
     btn_send.on_clicked(_send)
     btn_stop.on_clicked(_stop)
+    btn_match.on_clicked(_match_theta)
 
     # -------------------------------------------------------------------------
     # Animation loop
@@ -256,12 +270,13 @@ def main():
         if not np.isnan(pp[0]):
             payload_dot.set_data([pp[0]], [pp[1]])
             payload_dot.set_visible(True)
-            dx = np.cos(pp[2]) * ARROW_LEN
-            dy = np.sin(pp[2]) * ARROW_LEN
+            dx = np.cos(pp[2]) * PAYLOAD_ARROW_LEN
+            dy = np.sin(pp[2]) * PAYLOAD_ARROW_LEN
             payload_arrow.set_position((pp[0], pp[1]))
             payload_arrow.xy = (pp[0] + dx, pp[1] + dy)
             payload_arrow.xytext = (pp[0], pp[1])
             payload_arrow.set_visible(True)
+            payload_theta_text.set_text(f"payload θ: {pp[2]:.3f} rad  ({np.degrees(pp[2]):.1f}°)")
             trail_x.append(pp[0]); trail_y.append(pp[1])
             if len(trail_x) > TRAIL_LEN:
                 trail_x.pop(0); trail_y.pop(0)
@@ -283,6 +298,7 @@ def main():
             payload_dot.set_visible(False)
             payload_arrow.set_visible(False)
             status_text.set_text("waiting for payload pose…")
+            payload_theta_text.set_text("payload θ: —")
 
         if all_x:
             xmin, xmax = min(all_x) - _PAD, max(all_x) + _PAD
@@ -294,7 +310,7 @@ def main():
 
         return (robot_circles + robot_arrows + robot_labels +
                 [payload_dot, payload_arrow, trail_line,
-                 goal_star, goal_heading, status_text, sent_text])
+                 goal_star, goal_heading, status_text, sent_text, payload_theta_text])
 
     _anim = FuncAnimation(fig, _update, interval=50, blit=False)
     plt.show()
