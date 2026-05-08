@@ -64,8 +64,11 @@ from swarmlib.communication.backend import (
 
 
 # values
-ControllersList = [MRCapController, DRCapDistributedController, ForceCentralisedControllerCVel,
-                   ForceDistributedController, ForcelessCentralisedControllerCVel]
+ControllersList = [MRCapController, 
+                   DRCapDistributedController, 
+                   ForceCentralisedControllerCVel,
+                   ForceDistributedController, 
+                   ForcelessCentralisedControllerCVel]
 
 DecentralisedControllers = [DRCapDistributedController, ForceDistributedController]
 
@@ -154,22 +157,52 @@ def run_single(
     backend = build_backend(backend_kind, n_robots, topology_kind, dropout, seed=42)
 
     if ChosenController not in DecentralisedControllers:
-        controller = ChosenController(
-            num_robots=n_robots,
-            formation=formation,
-            config={
-                "horizon": horizon,
-                "v_max": v_max,
-                "sigma_x": 0.5,
-                "sigma_u": 0.3,
-                "sigma_anchor": 0.01,
-                "sigma_r2r": 0.05,
-                "sigma_pull_in": 0.3,
-                "sigma_consensus": 0.1,
-                "gbp_max_iters": gbp_max_iters,
-                "gbp_tol": 1e-3,
-            },
-        )
+        if ChosenController is MRCapController:
+            controller = ChosenController(
+                num_robots=n_robots,
+                formation=formation,
+                config={
+                    "horizon": horizon,
+                    "v_max": v_max,
+                    "sigma_x": 0.5,
+                    "sigma_u": 0.3,
+                    "sigma_anchor": 0.01,
+                    "sigma_r2r": 0.05,
+                    "sigma_pull_in": 0.3,
+                    "sigma_consensus": 0.1,
+                    "gbp_max_iters": gbp_max_iters,
+                    "gbp_tol": 1e-3,
+                },
+            )
+        elif ChosenController is ForceCentralisedControllerCVel:
+            controller = ChosenController(
+                num_robots=n_robots,
+                formation=formation,
+                config={
+                    "horizon": horizon,
+                    "v_max": v_max,
+                    "sigma_x": 0.5,
+                    "sigma_u": 3, # ForcelessCentralised and ForceCentralised use value of 3 for sigma_u
+                    "sigma_anchor": 0.01,
+                    "sigma_r2r": 0.05,
+                    "sigma_pull_in": 0.3,
+                    "sigma_consensus": 0.1,
+                    "gbp_max_iters": gbp_max_iters,
+                    "gbp_tol": 1e-3,
+                },
+            )
+        elif ChosenController is ForcelessCentralisedControllerCVel:
+            controller = ChosenController(
+                num_robots=n_robots,
+                formation=formation,
+                config={
+                    "horizon": horizon,
+                    "v_max": v_max,
+                    "sigma_x": 0.5,
+                    "sigma_u": 3, # ForcelessCentralised and ForceCentralised use value of 3 for sigma_u
+                    "sigma_anchor": 0.01
+                },
+            )
 
     else:
         controller = ChosenController(
@@ -189,6 +222,9 @@ def run_single(
                 "gbp_tol": 1e-3,
             },
         )
+
+    mass_estimate = None
+    centroid_velocity_estimtate = None
 
     obs = env.reset()
     controller.reset()
@@ -217,21 +253,57 @@ def run_single(
         payload = obs["payload"]
         robots  = obs["robots"]
 
+        # print("Controller:", controller)
+        # print("Config:", controller.config)
+
         #force is 2xN vector of forces (where N=num of robots), top half is 
         # vertical forces, bottom half is horizontal forces
-        forces  = np.array([obs.get("base_forces"), obs.get("wall_forces")])
 
         #print('!!forces passed to controller', forces)
 
         payload_trajectory.append(payload[:3].tolist())
 
-        controls = controller.compute_control(
-            payload_state=payload,
-            robot_states=robots,
-            goal_state=goal_arr,
-            dt=0.05,
-            forces=forces,
-        )
+        if ChosenController is ForceCentralisedControllerCVel: #these two have a different way to pass forces for whatever reason
+
+            wall_forces = obs.get("wall_forces")
+            base_forces = obs.get("base_forces")
+            # print('wall_forces:', wall_forces)
+            # print('base_forces:', base_forces)
+
+            controls, mass_estimate, centroid_velocity_estimtate = controller.compute_control(
+                payload_state=payload,
+                robot_states=robots,
+                goal_state=goal_arr,
+                dt=0.05,
+                wall_forces=wall_forces,
+                base_forces=base_forces,
+                mass_estimate=mass_estimate,
+                centroid_velocity_estimate=centroid_velocity_estimtate
+            )
+            # print('controls generated:', controls)
+            # print('mass_estimate:', mass_estimate)
+            # print('centroid_velocity_estimtate:', centroid_velocity_estimtate)
+
+        elif ChosenController is ForcelessCentralisedControllerCVel:
+            
+            controls= controller.compute_control(
+                payload_state=payload,
+                robot_states=robots,
+                goal_state=goal_arr,
+                dt=0.05,
+            )
+        else:
+            forces  = np.array([obs.get("base_forces"), obs.get("wall_forces")])
+
+            controls = controller.compute_control(
+                payload_state=payload,
+                robot_states=robots,
+                goal_state=goal_arr,
+                dt=0.05,
+                forces=forces,
+            )
+
+
         solve_times.append(controller.get_solve_time())
         if ChosenController in DecentralisedControllers:
             gbp_iters_log.append(controller.get_gbp_iters())
@@ -331,7 +403,7 @@ def main():
     parser.add_argument("--gbp-max-iters", type=int, default=30,
                         help="Max GBP iterations per control step (default: 30)")
     parser.add_argument("--vis", action="store_true")
-    parser.add_argument("--sim-speed", type=float, default=1)
+    parser.add_argument("--sim-speed", type=float, default=0.5)
     args = parser.parse_args()
 
     n_values = [int(x.strip()) for x in args.n_values.split(",")]

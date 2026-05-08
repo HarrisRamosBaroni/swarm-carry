@@ -368,17 +368,19 @@ class ForcelessCentralisedControllerCVel(BaseController):
         #make as many robot nodes as needed
         robot_nodes_fg = []
         for i in range(self.num_robots):
-            robot_nodes_fg.append(lambda j: gtsam.symbol(chr(97 + i), j)) #lowercase letters representing robots
+            #robot_nodes_fg.append(lambda j: gtsam.symbol(chr(97 + i), j)) #lowercase letters representing robots
+            robot_nodes_fg.append(lambda j, i=i: gtsam.symbol(chr(97 + i), j)) #NEW
 
         robot_control_nodes_fg = []
         for i in range(self.num_robots):
-            robot_control_nodes_fg.append(lambda j: gtsam.symbol(chr(65 + i), j)) #uppercase letters representing robot controls (1 per robot)
+            #robot_control_nodes_fg.append(lambda j: gtsam.symbol(chr(65 + i), j)) #uppercase letters representing robot controls (1 per robot)
+            robot_control_nodes_fg.append(lambda j, i=i: gtsam.symbol(chr(65 + i), j)) #NEW
 
         for j in range(N):
             kC  = Ck(j)
-            kV  = Vk(j)
+            # kV  = Vk(j)
             kC1 = Ck(j + 1)
-            Ma = M()
+            # Ma = M()
 
             #multiple robots
             current_robot_nodes_fg = []
@@ -395,6 +397,12 @@ class ForcelessCentralisedControllerCVel(BaseController):
             # State prior
             if j == 0:
                 noise_c = self._noise_anc
+
+                #NEW
+                #---
+                u_warm = (ref[j + 1] - ref[j]) / dt if dt > 1e-9 else np.zeros(3)
+                # init.insert(kV, u_warm)
+                #---
 
                 #initialising M here bc time-invariant so only needs 1 init. #TODO check if it initialised once at beginning only or once every fg solve (=> yeah it defo resets after each MPC window). Maybe collect value from previous guess?
                 # if mass_estimate is None:
@@ -417,7 +425,7 @@ class ForcelessCentralisedControllerCVel(BaseController):
 
                 u_warm = (ref[j + 1] - ref[j]) / dt if dt > 1e-9 else np.zeros(3)
                 
-                init.insert(kV, u_warm) #TODO might need better initialisation with vk + vk * F / m *dt
+                # init.insert(kV, u_warm) #TODO might need better initialisation with vk + vk * F / m *dt
 
             
 
@@ -507,8 +515,8 @@ class ForcelessCentralisedControllerCVel(BaseController):
 
         # U_opt = result.atVector(Uk(0))
         all_U_opt = [result.atVector(robot_control_nodes_fg[i](0)) for i in range(self.num_robots)]
-        M_opt = result.atVector(M())
-        Vcentroid_opt = result.atVector(Vk(0))
+        # M_opt = result.atVector(M())
+        # Vcentroid_opt = result.atVector(Vk(0))
         # print('Vcentroid_opt', Vcentroid_opt)
         # Vcentroid_opt = Vcentroid_opt + F_world / M_opt * dt #next time step velocity of centroid
         # print('Vcentroid_opt2', Vcentroid_opt)
@@ -521,7 +529,7 @@ class ForcelessCentralisedControllerCVel(BaseController):
         # print('all_U_opt before clip',all_U_opt)
         all_U_opt = np.clip(all_U_opt, lo, hi)
         # print('all_U_opt after clip',all_U_opt)
-        M_opt = np.clip(M_opt, 0.1, 10000) #clip mass to avoid numerical instability (especially negative or =0)
+        # M_opt = np.clip(M_opt, 0.1, 10000) #clip mass to avoid numerical instability (especially negative or =0)
         return all_U_opt #, M_opt, Vcentroid_opt
 
     # ------------------------------------------------------------------
