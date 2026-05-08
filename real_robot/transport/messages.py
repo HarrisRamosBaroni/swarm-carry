@@ -44,6 +44,14 @@ def estop_msg() -> bytes:
     return msgpack.packb({"t": "estop", "ts": time.time()})
 
 
+def ctrl_stop_msg() -> bytes:
+    """Pause the active controller without killing any process.
+    central_runner clears its goal and waits; agent_runners set a paused flag
+    and stop executing their local controller until a new goal arrives.
+    Unlike estop, nothing exits — cmd messages from the laptop still get through."""
+    return msgpack.packb({"t": "ctrl_stop", "ts": time.time()})
+
+
 def goal_msg(x: float, y: float, theta: float, tol: float) -> bytes:
     return msgpack.packb({
         "t": "goal",

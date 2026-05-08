@@ -95,6 +95,7 @@ class AgentRunner:
         self._sub.setsockopt_string(zmq.SUBSCRIBE, "cmd")
         self._sub.setsockopt_string(zmq.SUBSCRIBE, "goal")
         self._sub.setsockopt_string(zmq.SUBSCRIBE, "estop")
+        self._sub.setsockopt_string(zmq.SUBSCRIBE, "ctrl_stop")
 
         # Also subscribe to neighbor force for decentralised controller
         if not passive:
@@ -116,6 +117,9 @@ class AgentRunner:
         self._poses = {}           # robot_id → latest pose message dict
         self._own_prev_pose = None  # for velocity differentiation
         self._payload_state = np.zeros(6)
+
+        self._paused = False      # set by ctrl_stop; cleared when a new goal arrives
+        self._goal_tol = 0.15
 
         # Diagnostic state
         self._got_own_pose = False
@@ -184,12 +188,18 @@ class AgentRunner:
                     self._ros.send_cmd(0.0, 0.0)
                     self._running = False
                     break
+                elif t == "ctrl_stop":
+                    print(f"[agent {self._id}] soft stop received — pausing controller")
+                    self._paused = True
+                    self._ros.send_cmd(0.0, 0.0)
                 elif t == "goal":
                     self._goal = np.array([d["x"], d["y"], d["theta"]])
-                    self._printed_waiting = False  # re-evaluate what's still missing
+                    self._goal_tol = float(d.get("tol", self._goal_tol))
+                    self._paused = False
+                    self._printed_waiting = False
                     print(f"[agent {self._id}] goal updated to "
                           f"({d['x']:.2f}, {d['y']:.2f}, {d['theta']:.2f} rad) "
-                          f"tol={d['tol']:.2f} m")
+                          f"tol={self._goal_tol:.2f} m")
                 elif t == "pose":
                     rid = d["id"]
                     self._poses[rid] = d
@@ -214,6 +224,11 @@ class AgentRunner:
                 self._pub.send_multipart([b"force", raw_force])
 
                 if not self._passive:
+                    if self._paused:
+                        next_tick += self._dt
+                        time.sleep(max(0.0, next_tick - time.monotonic()))
+                        continue
+
                     # Skip tick until goal, own pose, payload pose, and all peers have arrived.
                     own = self._poses.get(self._id)
                     pp = self._poses.get(PAYLOAD_ID)

@@ -25,7 +25,7 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from matplotlib.widgets import Slider, Button
 
-from real_robot.transport.messages import goal_msg, estop_msg, cmd_msg
+from real_robot.transport.messages import goal_msg, estop_msg, cmd_msg, ctrl_stop_msg
 
 PAYLOAD_ID = -1
 ROBOT_COLORS = ["tab:blue", "tab:orange", "tab:green", "tab:red",
@@ -111,16 +111,18 @@ def main():
     sl_th  = Slider(ax_sth, "Goal θ (rad)", -3.14,  3.14, valinit=0.0, color="gold")
     sl_tol = Slider(ax_st,  "Tolerance (m)",  0.01,  1.0, valinit=args.goal_tol, color="lightblue")
 
-    ax_btn_send  = fig.add_axes([0.58, 0.022, 0.28, 0.038])
-    ax_btn_stop  = fig.add_axes([0.15, 0.022, 0.28, 0.038])
-    ax_btn_snap  = fig.add_axes([0.15, 0.066, 0.28, 0.038])
-    ax_btn_reset = fig.add_axes([0.58, 0.066, 0.28, 0.038])
-    ax_btn_match = fig.add_axes([0.71, 0.135, 0.16, 0.038])
-    btn_send  = Button(ax_btn_send,  "Send Goal",   color="lightgreen",  hovercolor="#00cc44")
-    btn_stop  = Button(ax_btn_stop,  "Stop Robots", color="salmon",      hovercolor="#cc2200")
-    btn_snap  = Button(ax_btn_snap,  "Snapshot",    color="lightcyan",   hovercolor="#00cccc")
-    btn_reset = Button(ax_btn_reset, "Reset Pose",  color="lightyellow", hovercolor="#ddaa00")
-    btn_match = Button(ax_btn_match, "Match θ",     color="lightyellow", hovercolor="#ffee55")
+    ax_btn_stop      = fig.add_axes([0.05, 0.022, 0.26, 0.038])
+    ax_btn_softstop  = fig.add_axes([0.37, 0.022, 0.26, 0.038])
+    ax_btn_send      = fig.add_axes([0.69, 0.022, 0.26, 0.038])
+    ax_btn_snap      = fig.add_axes([0.15, 0.066, 0.28, 0.038])
+    ax_btn_reset     = fig.add_axes([0.58, 0.066, 0.28, 0.038])
+    ax_btn_match     = fig.add_axes([0.71, 0.135, 0.16, 0.038])
+    btn_stop      = Button(ax_btn_stop,     "E-Stop",      color="salmon",      hovercolor="#cc2200")
+    btn_softstop  = Button(ax_btn_softstop, "Soft Stop",   color="lightsalmon", hovercolor="#ff8844")
+    btn_send      = Button(ax_btn_send,     "Send Goal",   color="lightgreen",  hovercolor="#00cc44")
+    btn_snap      = Button(ax_btn_snap,     "Snapshot",    color="lightcyan",   hovercolor="#00cccc")
+    btn_reset     = Button(ax_btn_reset,    "Reset Pose",  color="lightyellow", hovercolor="#ddaa00")
+    btn_match     = Button(ax_btn_match,    "Match θ",     color="lightyellow", hovercolor="#ffee55")
 
     # -------------------------------------------------------------------------
     # Map artists
@@ -242,6 +244,13 @@ def main():
         sent_text.set_text("ESTOP sent")
         fig.canvas.draw_idle()
 
+    def _soft_stop(_event=None):
+        _reset_state["running"] = False
+        pub.send_multipart([b"ctrl_stop", ctrl_stop_msg()])
+        print("[control_panel] soft stop sent")
+        sent_text.set_text("soft stop sent")
+        fig.canvas.draw_idle()
+
     def _match_theta(_event=None):
         with state.lock:
             pp = state.payload_pose.copy()
@@ -264,17 +273,7 @@ def main():
         fig.canvas.draw_idle()
 
     def _reset_worker():
-        time.sleep(0.35)  # let central_runner/agent_runners exit after ESTOP
-        ctx_r = zmq.Context.instance()
-        cmd_pub = ctx_r.socket(zmq.PUB)
-        cmd_pub.setsockopt(zmq.LINGER, 0)
-        try:
-            cmd_pub.bind(f"tcp://*:{cfg['laptop']['central_pub_port']}")
-        except zmq.ZMQError as e:
-            print(f"[control_panel] reset: could not bind cmd port — {e}")
-            _reset_state["running"] = False
-            return
-        time.sleep(0.1)  # give subscribers a moment to connect
+        time.sleep(0.1)  # let ctrl_stop propagate before we start sending cmd
 
         targets = _snap["poses"][:n, :2]
         KP, V_MAX, TOL = 1.2, 0.15, 0.05
@@ -301,9 +300,9 @@ def main():
                     cr, sr = np.cos(th), np.sin(th)
                     vx_b =  cr * v_world[0] + sr * v_world[1]
                     vy_b = -sr * v_world[0] + cr * v_world[1]
-                    cmd_pub.send_multipart([b"cmd", cmd_msg(i, vx_b, vy_b)])
+                    pub.send_multipart([b"cmd", cmd_msg(i, vx_b, vy_b)])
                 else:
-                    cmd_pub.send_multipart([b"cmd", cmd_msg(i, 0.0, 0.0)])
+                    pub.send_multipart([b"cmd", cmd_msg(i, 0.0, 0.0)])
 
             if all_done:
                 print("[control_panel] reset: all robots reached snapshot poses")
@@ -312,9 +311,7 @@ def main():
             time.sleep(DT)
 
         for i in range(n):
-            cmd_pub.send_multipart([b"cmd", cmd_msg(i, 0.0, 0.0)])
-        time.sleep(0.1)
-        cmd_pub.close()
+            pub.send_multipart([b"cmd", cmd_msg(i, 0.0, 0.0)])
         _reset_state["running"] = False
         print("[control_panel] reset complete")
 
@@ -329,8 +326,8 @@ def main():
             status_text.set_text("reset cancelled")
             fig.canvas.draw_idle()
             return
-        pub.send_multipart([b"estop", estop_msg()])
-        print("[control_panel] ESTOP sent before reset")
+        pub.send_multipart([b"ctrl_stop", ctrl_stop_msg()])
+        print("[control_panel] soft stop sent before reset")
         _reset_state["running"] = True
         btn_reset.label.set_text("Cancel Reset")
         status_text.set_text("resetting to snapshot poses…")
@@ -339,6 +336,7 @@ def main():
 
     btn_send.on_clicked(_send)
     btn_stop.on_clicked(_stop)
+    btn_softstop.on_clicked(_soft_stop)
     btn_snap.on_clicked(_take_snapshot)
     btn_reset.on_clicked(_reset_pose)
     btn_match.on_clicked(_match_theta)

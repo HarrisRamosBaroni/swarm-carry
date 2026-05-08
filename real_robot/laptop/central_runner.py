@@ -81,6 +81,7 @@ class CentralRunner:
         self._sub.setsockopt_string(zmq.SUBSCRIBE, "pose")
         self._sub.setsockopt_string(zmq.SUBSCRIBE, "goal")
         self._sub.setsockopt_string(zmq.SUBSCRIBE, "estop")
+        self._sub.setsockopt_string(zmq.SUBSCRIBE, "ctrl_stop")
 
         self._pub = ctx.socket(zmq.PUB)
         self._pub.bind(f"tcp://*:{cfg['laptop']['central_pub_port']}")
@@ -132,6 +133,12 @@ class CentralRunner:
                 print("[central] ESTOP received — sending zero velocities")
                 self._send_zeros()
                 raise KeyboardInterrupt
+            if t == "ctrl_stop":
+                print("[central] soft stop received — clearing goal, waiting for next")
+                self._send_zeros()
+                self._goal = None
+                self._printed_waiting = False
+                continue
             if t == "goal":
                 self._goal = np.array([d["x"], d["y"], d["theta"]])
                 self._goal_tol = float(d["tol"])
