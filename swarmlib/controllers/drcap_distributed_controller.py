@@ -503,14 +503,17 @@ class DRCapDistributedController(BaseController):
         U_c = np.clip(U_c, lo, hi)
 
         self._set_solve_time(time.perf_counter() - t0)
-        return self._robot_velocities(U_c)
+        return self._robot_velocities(U_c, centroid_pose[2])
 
     # --- Rigid-body velocity distribution ----------------------------------
 
-    def _robot_velocities(self, U_c: np.ndarray) -> np.ndarray:
+    def _robot_velocities(self, U_c: np.ndarray, theta: float) -> np.ndarray:
         vx_c, vy_c, omega_c = U_c
         # In deploy mode, compute only my own row of the rigid-body map.
-        r = self._r if self.my_id is None else self._r[[self.my_id]]
+        c, s = np.cos(theta), np.sin(theta)
+        R = np.array([[c, -s], [s, c]])
+        r_world = self._r @ R.T                # body-frame → world-frame, (n, 2)
+        r = r_world if self.my_id is None else r_world[[self.my_id]]
         vx = vx_c - omega_c * r[:, 1]
         vy = vy_c + omega_c * r[:, 0]
         speeds = np.hypot(vx, vy)

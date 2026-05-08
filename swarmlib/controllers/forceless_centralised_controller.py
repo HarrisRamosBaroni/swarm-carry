@@ -329,7 +329,7 @@ class ForcelessCentralisedControllerCVel(BaseController):
         # print("Wall forces:", wall_forces, "  Base forces:", base_forces)
         # print("mass estimate:",mass_estimate)
 
-        return self._robot_velocities2(U_c_all) #, mass_estimate, centroid_velocity_estimate 
+        return self._robot_velocities2(U_c_all, centroid[2]) #, mass_estimate, centroid_velocity_estimate
 
     # ------------------------------------------------------------------
     # Factor graph solve
@@ -536,42 +536,46 @@ class ForcelessCentralisedControllerCVel(BaseController):
     # Rigid-body velocity distribution
     # ------------------------------------------------------------------
 
-    def _robot_velocities(self, U_c: np.ndarray) -> np.ndarray: 
+    def _robot_velocities(self, U_c: np.ndarray, theta: float) -> np.ndarray:
         """
         Derive per-robot [vx, vy] from centroid control U_c = [vx_c, vy_c, omega_c].
 
         Holonomic rigid-body kinematics:
           v_ix = vx_c - omega_c * r_iy
           v_iy = vy_c + omega_c * r_ix
+        where r_i must be in world frame. self._r stores body-frame offsets,
+        so rotate by current payload heading theta first.
         Then clamp individual robot speeds to v_max.
         """
         vx_c, vy_c, omega_c = U_c
-
-        r = self._r                            # (n, 2)
+        c, s = np.cos(theta), np.sin(theta)
+        R = np.array([[c, -s], [s, c]])
+        r = self._r @ R.T                      # body-frame → world-frame, (n, 2)
         vx = vx_c - omega_c * r[:, 1]
         vy = vy_c + omega_c * r[:, 0]
 
         speeds = np.hypot(vx, vy)
         scale  = np.where(speeds > self._v_max, self._v_max / speeds, 1.0)
         return np.column_stack([vx * scale, vy * scale])
-    
-    def _robot_velocities2(self, U_c_all: np.ndarray) -> np.ndarray: 
+
+    def _robot_velocities2(self, U_c_all: np.ndarray, theta: float) -> np.ndarray:
         """
-        Derive per-robot [vx, vy] from centroid control U_c = [vx_c, vy_c, omega_c].
+        Derive per-robot [vx, vy] from per-robot controls U_c_all (n, 3) = [vx, vy, omega].
 
         Holonomic rigid-body kinematics:
           v_ix = vx_c - omega_c * r_iy
           v_iy = vy_c + omega_c * r_ix
+        where r_i must be in world frame. self._r stores body-frame offsets,
+        so rotate by current payload heading theta first.
         Then clamp individual robot speeds to v_max.
         """
-        # print('U_c_all', U_c_all)
-        
         vx = U_c_all[:,0]
-        vy =  U_c_all[:,1]
+        vy = U_c_all[:,1]
         omega = U_c_all[:,2]
-        # vx, vy, omega = U_c_all
 
-        r = self._r                            # (n, 2)
+        c, s = np.cos(theta), np.sin(theta)
+        R = np.array([[c, -s], [s, c]])
+        r = self._r @ R.T                      # body-frame → world-frame, (n, 2)
         vx = vx - omega * r[:, 1]
         vy = vy + omega * r[:, 0]
 

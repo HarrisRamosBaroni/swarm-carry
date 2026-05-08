@@ -631,9 +631,11 @@ class ForceDistributedController(BaseController):
         scale = np.where(speeds > self._v_max, self._v_max / speeds, 1.0)
         return np.array([vx * scale, vy * scale])
 
-    def _robot_velocities(self, U_c: np.ndarray) -> np.ndarray:
+    def _robot_velocities(self, U_c: np.ndarray, theta: float) -> np.ndarray:
         vx_c, vy_c, omega_c = U_c
-        r = self._r
+        c, s = np.cos(theta), np.sin(theta)
+        R = np.array([[c, -s], [s, c]])
+        r = self._r @ R.T                      # body-frame → world-frame, (n, 2)
         vx = vx_c - omega_c * r[:, 1]
         vy = vy_c + omega_c * r[:, 0]
         speeds = np.hypot(vx, vy)
