@@ -24,7 +24,9 @@ import numpy as np
 
 from swarmlib.simulation.mecanum_env import MecanumTransportEnv
 from swarmlib.simulation.generate_mecanum_scene import face_contact_formation
-from swarmlib.controllers import ForceCentralisedControllerCVel
+# from swarmlib.controllers import ForceCentralisedControllerCVel
+from swarmlib.controllers import ForcelessCentralisedControllerCVel
+
 
 
 # ---------------------------------------------------------------------------
@@ -69,7 +71,8 @@ def run_single(
     )
 
     # Formation offsets passed to controller must match env formation
-    controller = ForceCentralisedControllerCVel(
+    # controller = ForceCentralisedControllerCVel(
+    controller = ForcelessCentralisedControllerCVel(
         num_robots=n_robots,
         formation=formation,
         # config={"horizon": horizon, "v_max": v_max, "sigma_x": 0.5,
@@ -111,9 +114,12 @@ def run_single(
         # wall_forces = obs.get("wall_forces")
         # base_forces = obs.get("base_forces")
 
+        print("Controller:", controller)
+        print("Config:", controller.config)
+
         payload_trajectory.append(payload[:3].tolist())
 
-        controls, mass_estimate, centroid_velocity_estimtate = controller.compute_control(
+        controls = controller.compute_control(
             payload_state=payload,
             robot_states=robots,
             goal_state=goal_arr,
