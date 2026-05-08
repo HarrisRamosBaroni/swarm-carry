@@ -283,6 +283,20 @@ class AgentRunner:
                     self._payload_state[1] = pp["y"]
                     self._payload_state[2] = pp["theta"]
 
+                    dist = float(np.linalg.norm(
+                        np.array([pp["x"], pp["y"]]) - self._goal[:2]
+                    ))
+                    if dist < self._goal_tol:
+                        print(f"[agent {self._id}] GOAL REACHED — "
+                              f"dist={dist*100:.1f} cm < {self._goal_tol*100:.0f} cm — "
+                              f"waiting for next goal")
+                        self._ros.send_cmd(0.0, 0.0)
+                        self._goal = None
+                        self._paused = True
+                        self._printed_waiting = False
+                        next_tick += self._dt
+                        continue
+
                     robot_states = np.array([[own["x"], own["y"], own["theta"], vx, vy]])
                     try:
                         controls = self.controller.compute_control(
