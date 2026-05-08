@@ -46,6 +46,7 @@ GT_PAYLOAD=false
 RELATIVE_GOAL=false
 CONTROL_PANEL=true
 CONTROLLER="mrcap"
+AGENT_EXTRA_ARGS="${AGENT_EXTRA_ARGS:-}"   # appended to central_runner args; e.g. AGENT_EXTRA_ARGS="--v-max 0.3"
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -94,9 +95,10 @@ tmux send-keys -t "$TMUX_SESSION:mocap" "$MOCAP_CMD" Enter
 
 if [[ "$MODE" == "central" ]]; then
   CTRL_CMD="$PYTHON -m real_robot.laptop.central_runner --config $CONFIG --n-robots $N_ROBOTS --controller $CONTROLLER"
-  if [[ -n "$GOAL" ]];    then CTRL_CMD="$CTRL_CMD --goal $GOAL";     fi
-  if $GT_PAYLOAD;         then CTRL_CMD="$CTRL_CMD --gt-payload";      fi
-  if $RELATIVE_GOAL;      then CTRL_CMD="$CTRL_CMD --relative-goal";   fi
+  if [[ -n "$GOAL" ]];    then CTRL_CMD="$CTRL_CMD --goal $GOAL";                         fi
+  if $GT_PAYLOAD;         then CTRL_CMD="$CTRL_CMD --gt-payload";                          fi
+  if $RELATIVE_GOAL;      then CTRL_CMD="$CTRL_CMD --relative-goal";                       fi
+  if [[ -n "$AGENT_EXTRA_ARGS" ]]; then CTRL_CMD="$CTRL_CMD $AGENT_EXTRA_ARGS"; fi
 
   tmux new-window -t "$TMUX_SESSION" -n controller
   tmux send-keys -t "$TMUX_SESSION:controller" "$CTRL_CMD" Enter

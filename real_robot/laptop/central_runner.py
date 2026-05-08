@@ -341,7 +341,7 @@ def main():
                              "control_panel sends the first goal.")
     parser.add_argument("--control-hz", type=float, default=20.0)
     parser.add_argument("--horizon", type=int, default=15)
-    parser.add_argument("--v-max", type=float, default=0.25)
+    parser.add_argument("--v-max", type=float, default=0.1)
     parser.add_argument("--gt-payload", action="store_true",
                         help="Use live mocap payload pose every step "
                              "(requires a 'payload' rigid body in mocap). "

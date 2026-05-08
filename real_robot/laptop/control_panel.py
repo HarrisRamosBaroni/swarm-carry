@@ -72,7 +72,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="real_robot/config/network.yaml")
     parser.add_argument("--n-robots", type=int, default=2)
-    parser.add_argument("--goal-tol", type=float, default=0.15)
+    parser.add_argument("--goal-tol", type=float, default=0.2)
     args = parser.parse_args()
 
     with open(args.config) as f:
@@ -276,7 +276,7 @@ def main():
         time.sleep(0.1)  # let ctrl_stop propagate before we start sending cmd
 
         targets = _snap["poses"][:n]  # (n, 3): x, y, theta
-        KP, V_MAX, TOL = 1.2, 0.15, 0.05
+        KP, V_MAX, TOL = 0.7, 0.1, 0.05
         KP_TH, OMEGA_MAX, TOL_TH = 1.5, 0.6, 0.05
         DT = 0.05
 
