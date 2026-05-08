@@ -282,7 +282,7 @@ class AgentRunner:
                     self._payload_state[1] = pp["y"]
                     self._payload_state[2] = pp["theta"]
 
-                    robot_states = np.array([[own["x"], own["y"], vx, vy]])
+                    robot_states = np.array([[own["x"], own["y"], own["theta"], vx, vy]])
                     try:
                         controls = self.controller.compute_control(
                             payload_state=self._payload_state,
@@ -291,7 +291,12 @@ class AgentRunner:
                             dt=self._dt,
                             forces=None,
                         )
-                        self._ros.send_cmd(float(controls[0, 0]), float(controls[0, 1]))
+                        theta = own["theta"]
+                        c, s = np.cos(theta), np.sin(theta)
+                        vx_w, vy_w = float(controls[0, 0]), float(controls[0, 1])
+                        vx_b =  c * vx_w + s * vy_w
+                        vy_b = -s * vx_w + c * vy_w
+                        self._ros.send_cmd(vx_b, vy_b)
                     except TimeoutError:
                         print(f"[agent {self._id}] GBP barrier timeout — "
                               f"peer likely soft-stopped; pausing and resetting controller")
