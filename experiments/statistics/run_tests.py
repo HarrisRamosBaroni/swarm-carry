@@ -67,24 +67,24 @@ from swarmlib.communication.backend import (
 
 
 # values
-# ControllersList = [MRCapController, 
-#                    DRCapDistributedController, 
-#                    ForceCentralisedControllerCVel,
-#                    ForceDistributedController, 
-#                    ForcelessCentralisedControllerCVel]
+ControllersList = [MRCapController, 
+                   DRCapDistributedController, 
+                   ForceCentralisedControllerCVel,
+                   ForceDistributedController, 
+                   ForcelessCentralisedControllerCVel]
 
 DecentralisedControllers = [DRCapDistributedController, ForceDistributedController]
 
-# distances_to_goal = [i * 3 for i in range(1,11)]
+distances_to_goal = [i * 3 for i in range(1,11)]
 
 numbers_of_robots = [2,3,4] #TODO look into getting more robots in formation, currently max of 4
 
-# horizons = [i * 3 for i in range(1,11)]
+horizons = [i * 3 for i in range(1,11)]
 
 #overwrite to simpler vals for testing
-distances_to_goal = [5, 10]
-horizons = [10, 15]
-ControllersList = [MRCapController, DRCapDistributedController]
+# distances_to_goal = [5, 10]
+# horizons = [10, 15]
+# ControllersList = [MRCapController, DRCapDistributedController]
 
 
 #defaults
@@ -387,254 +387,7 @@ def run_single(
         "torques_Nm":         torques.tolist(),
     }
 
-# def plot_results(results):
-#     """
-#     Generate plots grouped by controller.
-#     """
 
-#     # Group by controller
-#     grouped = defaultdict(list)
-#     for r in results:
-#         grouped[r["controller"]].append(r)
-
-#     for controller, data in grouped.items():
-#         print(f"Plotting for {controller}...")
-
-#         # Convert to arrays
-#         n = np.array([d["n_robots"] for d in data])
-#         distance = np.array([d["distance"] for d in data])
-#         horizon = np.array([d["horizon"] for d in data])
-#         solve = np.array([d["solve_time_mean"] for d in data])
-#         error = np.array([d["final_error"] for d in data])
-#         success = np.array([d["success"] for d in data])
-
-#         # --- Plot 1: Solve time vs robots ---
-#         plt.figure()
-#         plt.title(f"{controller} — Solve Time vs # Robots")
-#         plt.xlabel("Number of robots")
-#         plt.ylabel("Solve time (ms)")
-#         # plt.scatter(n, solve)
-#         plt.plot(n, solve, marker='o')
-#         plt.grid()
-
-#         # --- Plot 2: Final error vs robots ---
-#         plt.figure()
-#         plt.title(f"{controller} — Final Error vs # Robots")
-#         plt.xlabel("Number of robots")
-#         plt.ylabel("Final error (m)")
-#         # plt.scatter(n, error)
-#         plt.plot(n, error, marker='o')
-#         plt.grid()
-
-#         # --- Plot 3: Success rate ---
-#         plt.figure()
-#         plt.title(f"{controller} — Success rate vs # Robots")
-
-#         unique_n = sorted(set(n))
-#         success_rate = [
-#             np.mean([d["success"] for d in data if d["n_robots"] == k])
-#             for k in unique_n
-#         ]
-
-#         plt.plot(unique_n, success_rate, marker='o')
-#         plt.xlabel("Number of robots")
-#         plt.ylabel("Success rate")
-#         plt.ylim(0, 1.05)
-#         plt.grid()
-
-#         # --- Optional: GBP / messages ---
-#         if any(d["gbp_iters"] is not None for d in data):
-#             gbp = np.array([d["gbp_iters"] for d in data])
-
-#             plt.figure()
-#             plt.title(f"{controller} — GBP iterations")
-#             plt.scatter(n, gbp)
-#             plt.xlabel("Number of robots")
-#             plt.ylabel("Iterations")
-#             plt.grid()
-
-#         # --- Plot 1b: Solve time vs distance ---
-#         plt.figure()
-#         plt.title(f"{controller} — Solve Time vs # Robots")
-#         plt.xlabel("Number of robots")
-#         plt.ylabel("Solve time (ms)")
-#         # plt.scatter(n, solve)
-#         plt.plot(distance, solve, marker='o')
-#         plt.grid()
-
-#         # --- Plot 2: Final error vs robots ---
-#         plt.figure()
-#         plt.title(f"{controller} — Final Error vs # Robots")
-#         plt.xlabel("Number of robots")
-#         plt.ylabel("Final error (m)")
-#         # plt.scatter(n, error)
-#         plt.plot(n, error, marker='o')
-#         plt.grid()
-
-#         # --- Plot 3: Success rate ---
-#         plt.figure()
-#         plt.title(f"{controller} — Success rate vs # Robots")
-
-#         unique_n = sorted(set(n))
-#         success_rate = [
-#             np.mean([d["success"] for d in data if d["n_robots"] == k])
-#             for k in unique_n
-#         ]
-
-#         plt.plot(unique_n, success_rate, marker='o')
-#         plt.xlabel("Number of robots")
-#         plt.ylabel("Success rate")
-#         plt.ylim(0, 1.05)
-#         plt.grid()
-
-#         # --- Optional: GBP / messages ---
-#         if any(d["gbp_iters"] is not None for d in data):
-#             gbp = np.array([d["gbp_iters"] for d in data])
-
-#             plt.figure()
-#             plt.title(f"{controller} — GBP iterations")
-#             plt.scatter(n, gbp)
-#             plt.xlabel("Number of robots")
-#             plt.ylabel("Iterations")
-#             plt.grid()
-
-#     # --- Plot 1: Solve time vs robots ---
-#         plt.figure()
-#         plt.title(f"{controller} — Solve Time vs # Robots")
-#         plt.xlabel("Number of robots")
-#         plt.ylabel("Solve time (ms)")
-#         # plt.scatter(n, solve)
-#         plt.plot(n, solve, marker='o')
-#         plt.grid()
-
-#         # --- Plot 2: Final error vs robots ---
-#         plt.figure()
-#         plt.title(f"{controller} — Final Error vs # Robots")
-#         plt.xlabel("Number of robots")
-#         plt.ylabel("Final error (m)")
-#         # plt.scatter(n, error)
-#         plt.plot(n, error, marker='o')
-#         plt.grid()
-
-#         # --- Plot 3: Success rate ---
-#         plt.figure()
-#         plt.title(f"{controller} — Success rate vs # Robots")
-
-#         unique_n = sorted(set(n))
-#         success_rate = [
-#             np.mean([d["success"] for d in data if d["n_robots"] == k])
-#             for k in unique_n
-#         ]
-
-#         plt.plot(unique_n, success_rate, marker='o')
-#         plt.xlabel("Number of robots")
-#         plt.ylabel("Success rate")
-#         plt.ylim(0, 1.05)
-#         plt.grid()
-
-#         # --- Optional: GBP / messages ---
-#         if any(d["gbp_iters"] is not None for d in data):
-#             gbp = np.array([d["gbp_iters"] for d in data])
-
-#             plt.figure()
-#             plt.title(f"{controller} — GBP iterations")
-#             plt.scatter(n, gbp)
-#             plt.xlabel("Number of robots")
-#             plt.ylabel("Iterations")
-#             plt.grid()
-
-#     plt.show()
-
-# def plot_results(results):
-
-#     # Convert to structured arrays
-#     controllers = set(r["controller"] for r in results)
-
-#     for controller in controllers:
-#         data = [r for r in results if r["controller"] == controller]
-
-#         n_vals = sorted(set(r["n_robots"] for r in data))
-#         d_vals = sorted(set(r["distance"] for r in data))
-#         h_vals = sorted(set(r["horizon"] for r in data))
-
-#         # -------------------------------
-#         # 1. Solve time vs robots (grouped by distance)
-#         # -------------------------------
-#         plt.figure()
-#         for d in d_vals:
-#             subset = [r for r in data if r["distance"] == d]
-#             xs = sorted(set(r["n_robots"] for r in subset))
-#             ys = [
-#                 np.mean([r["solve_time_mean"] for r in subset if r["n_robots"] == x])
-#                 for x in xs
-#             ]
-#             plt.plot(xs, ys, marker='o', label=f"dist={d}")
-
-#         plt.title(f"{controller} — Solve time vs robots (by distance)")
-#         plt.xlabel("Number of robots")
-#         plt.ylabel("Solve time (ms)")
-#         plt.legend()
-#         plt.grid()
-
-#         # -------------------------------
-#         # 2. Solve time vs robots (grouped by horizon)
-#         # -------------------------------
-#         plt.figure()
-#         for h in h_vals:
-#             subset = [r for r in data if r["horizon"] == h]
-#             xs = sorted(set(r["n_robots"] for r in subset))
-#             ys = [
-#                 np.mean([r["solve_time_mean"] for r in subset if r["n_robots"] == x])
-#                 for x in xs
-#             ]
-#             plt.plot(xs, ys, marker='o', label=f"H={h}")
-
-#         plt.title(f"{controller} — Solve time vs robots (by horizon)")
-#         plt.xlabel("Number of robots")
-#         plt.ylabel("Solve time (ms)")
-#         plt.legend()
-#         plt.grid()
-
-#         # -------------------------------
-#         # 3. Final error vs distance (grouped by robots)
-#         # -------------------------------
-#         plt.figure()
-#         for n in n_vals:
-#             subset = [r for r in data if r["n_robots"] == n]
-#             xs = sorted(set(r["distance"] for r in subset))
-#             ys = [
-#                 np.mean([r["final_error"] for r in subset if r["distance"] == x])
-#                 for x in xs
-#             ]
-#             plt.plot(xs, ys, marker='o', label=f"n={n}")
-
-#         plt.title(f"{controller} — Final error vs distance")
-#         plt.xlabel("Distance")
-#         plt.ylabel("Final error (m)")
-#         plt.legend()
-#         plt.grid()
-
-#         # -------------------------------
-#         # 4. Success rate vs horizon (grouped by robots)
-#         # -------------------------------
-#         plt.figure()
-#         for n in n_vals:
-#             subset = [r for r in data if r["n_robots"] == n]
-#             xs = sorted(set(r["horizon"] for r in subset))
-#             ys = [
-#                 np.mean([r["success"] for r in subset if r["horizon"] == x])
-#                 for x in xs
-#             ]
-#             plt.plot(xs, ys, marker='o', label=f"n={n}")
-
-#         plt.title(f"{controller} — Success rate vs horizon")
-#         plt.xlabel("Horizon")
-#         plt.ylabel("Success rate")
-#         plt.ylim(0, 1.05)
-#         plt.legend()
-#         plt.grid()
-
-#     plt.show()
 
 def plot_results(results):
     import matplotlib.pyplot as plt
