@@ -494,11 +494,14 @@ class ForceDistributedController(BaseController):
         num_robots: int,
         formation: Optional[List[tuple]] = None,
         backend: Optional[CommunicationBackend] = None,
+        my_id: Optional[int] = None,
         topology: Optional[Dict[int, List[int]]] = None,
         config: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(num_robots, config)
         cfg = self.config
+
+        self.my_id = my_id
 
         # Formation: world-frame xy offset from centroid per robot
         if formation is not None:
@@ -515,14 +518,21 @@ class ForceDistributedController(BaseController):
             topology = create_full_topology(num_robots)
         self._topology = topology
 
-        # Backend: default SimulatedBackend
+        # Backend: default SimulatedBackend in sim mode; required in deploy mode.
         if backend is None:
+            if my_id is not None:
+                raise ValueError(
+                    "Deployment mode (my_id set) requires an externally "
+                    "constructed backend (e.g. ZeroMQSingleAgentBackend)."
+                )
             backend = SimulatedBackend(num_robots, topology)
         self.backend = backend
 
-        # Per-robot local graphs
-        self.local_graphs: List[LocalRobotGraph] = [
-            LocalRobotGraph(
+        # Local graphs keyed by robot id. In sim: all N. In deploy: only my_id.
+        ids_to_build = [my_id] if my_id is not None else list(range(num_robots))
+        self._owned_ids = ids_to_build
+        self.local_graphs: Dict[int, LocalRobotGraph] = {
+            i: LocalRobotGraph(
                 robot_id=i,
                 num_robots=num_robots,
                 r_i=self._r[i],
@@ -530,8 +540,8 @@ class ForceDistributedController(BaseController):
                 neighbors=topology[i],
                 cfg=cfg,
             )
-            for i in range(num_robots)
-        ]
+            for i in ids_to_build
+        }
 
         self._max_iters = int(cfg.get("gbp_max_iters",   30))
         self._tol       = float(cfg.get("gbp_tol",       1e-3))
@@ -560,39 +570,46 @@ class ForceDistributedController(BaseController):
         centroid_pose = payload_state[:3].copy()
         goal = np.asarray(goal_state, dtype=float)[:3]
 
-        # Warm-start each local graph. Robot states carry (x, y, vx, vy) only,
-        # so we use centroid theta as a proxy for robot theta.
-        for i, graph in enumerate(self.local_graphs):
+        # Warm-start owned graphs. In deploy mode robot_states is (1,4) — this
+        # robot only; in sim mode (N,4) with row i for robot i.
+        # forces convention (sim): (2, n_robots) — row 0=base/vertical, row 1=wall/horizontal.
+        # forces in deploy mode: None until agent_runner wires load cells through.
+        for i in self._owned_ids:
+            row = 0 if self.my_id is not None else i
             robot_pose = np.array([
-                robot_states[i, 0],
-                robot_states[i, 1],
+                robot_states[row, 0],
+                robot_states[row, 1],
                 centroid_pose[2],
             ])
             #add mass measurement here bc i'm not sure whee else to put it
             # print('forces measured by robot:', forces[:,i], '([vertical force, horizontal force])')
             # print(f'ading mass estimate {np.sum(forces[0,i])/9.81 * self.num_robots}kg to window')
             #assuming mass is evenly shared amongst robots, so multiplying personal meaurement by num of robots
-            graph.add_mass_measurement(np.sum(forces[0,i])/9.81  * self.num_robots) #TODO check if correct
-            # print('!! warm start: passing these forces', forces[:,i])
-            graph.warm_start(robot_pose, centroid_pose, goal, dt, forces[:,i])
+            if forces is not None:
+                f_i = forces[:, row]
+                self.local_graphs[i].add_mass_measurement(float(forces[0, row]) / 9.81 * self.num_robots) #TODO check if correct
+            else:
+                f_i = np.zeros(2)
+            # print('!! warm start: passing these forces', f_i)
+            self.local_graphs[i].warm_start(robot_pose, centroid_pose, goal, dt, f_i)
 
         # GBP iterations
         iters_done = 0
         for it in range(self._max_iters):
-            for i, graph in enumerate(self.local_graphs):
-                msg = graph.pack_outgoing_message()
+            for i in self._owned_ids:
+                msg = self.local_graphs[i].pack_outgoing_message()
                 self.backend.broadcast(i, msg)
 
             self.backend.barrier()
 
-            for i, graph in enumerate(self.local_graphs):
+            for i in self._owned_ids:
                 inbox = self.backend.receive(i)
                 for sender_id, msg in inbox:
-                    graph.set_neighbor_message(sender_id, msg)
+                    self.local_graphs[i].set_neighbor_message(sender_id, msg)
 
             max_change = 0.0
-            for graph in self.local_graphs:
-                max_change = max(max_change, graph.gbp_step())
+            for i in self._owned_ids:
+                max_change = max(max_change, self.local_graphs[i].gbp_step())
 
             iters_done = it + 1
             if max_change < self._tol:
@@ -608,13 +625,13 @@ class ForceDistributedController(BaseController):
         # hi = np.array([ self._v_max,  self._v_max,  self._omega_max])
         # U_c = np.clip(U_c, lo, hi)
         #TODO check if works
-        U_x = np.zeros((self.num_robots, 3))
+        U_x = np.zeros((len(self._owned_ids), 3))
         lo = np.array([-self._v_max, -self._v_max, -self._omega_max])
         hi = np.array([ self._v_max,  self._v_max,  self._omega_max])
-        for i, robot_graph in enumerate(self.local_graphs):
-            U_x[i,:] = self.local_graphs[i].first_control()
-            U_x[i,:] = np.clip(U_x[i,:], lo, hi)
-        
+        for idx, i in enumerate(self._owned_ids):
+            U_x[idx,:] = self.local_graphs[i].first_control()
+            U_x[idx,:] = np.clip(U_x[idx,:], lo, hi)
+
         # U_c = np.clip(U_c, lo, hi)
 
         self._set_solve_time(time.perf_counter() - t0)

@@ -1,4 +1,5 @@
 """
+DEPRECATED CONTROLLER
 ForceCentralisedController: centralized factor-graph controller for multi-robot payload transport.
 Note: This is a centralised version of the factor graph, not the decentralised 
 version we're developping.

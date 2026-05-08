@@ -27,15 +27,14 @@ from swarmlib.communication.zmq_backend import ZeroMQSingleAgentBackend
 
 PAYLOAD_ID = -1  # sentinel id mocap_bridge uses for the payload rigid body
 
-_AGENT_CONTROLLERS = ("drcap",)  # extend once a controller has my_id deploy support
+_AGENT_CONTROLLERS = ("drcap", "force_distributed")
 
 
 def _make_agent_controller(name, num_robots, formation, backend, my_id, config):
-    from swarmlib.controllers import DRCapDistributedController
-    # Add entries here when new distributed controllers gain my_id deploy support
-    # (see sim->deployment pattern in real_robot/README.md).
+    from swarmlib.controllers import DRCapDistributedController, ForceDistributedController
     classes = {
-        "drcap": DRCapDistributedController,
+        "drcap":             DRCapDistributedController,
+        "force_distributed": ForceDistributedController,
     }
     if name not in classes:
         raise ValueError(f"unknown controller '{name}'; choices: {sorted(classes)}")
