@@ -13,6 +13,7 @@ TEAM: set self.controller to your swarmlib controller (decentralised variant).
 """
 import argparse
 import signal
+import threading
 import time
 
 import yaml
@@ -146,6 +147,13 @@ class AgentRunner:
         signal.signal(signal.SIGINT, self._handle_sigint)
         signal.signal(signal.SIGTERM, self._handle_sigint)
 
+        # Daemon thread: unblocks a synchronous GBP barrier on ctrl_stop / estop
+        # so the main loop doesn't have to wait for barrier_timeout.
+        if not passive:
+            self._watcher = threading.Thread(
+                target=self._stop_watcher, args=(cfg,), daemon=True)
+            self._watcher.start()
+
         my_port = next(r["pub_port"] for r in cfg["robots"] if r["id"] == robot_id)
         laptop_ip = cfg['laptop']['ip']
         mode = "passive" if passive else "active"
@@ -157,6 +165,24 @@ class AgentRunner:
     def _handle_sigint(self, sig, frame):
         print(f"\n[agent {self._id}] shutting down")
         self._running = False
+
+    def _stop_watcher(self, cfg: dict):
+        """Daemon thread: interrupts a blocking barrier on ctrl_stop / estop."""
+        ctx = zmq.Context.instance()
+        sub = ctx.socket(zmq.SUB)
+        sub.connect(f"tcp://{cfg['laptop']['ip']}:{cfg['laptop']['central_pub_port']}")
+        sub.connect(f"tcp://{cfg['laptop']['ip']}:{cfg['laptop']['goal_pub_port']}")
+        sub.setsockopt_string(zmq.SUBSCRIBE, "ctrl_stop")
+        sub.setsockopt_string(zmq.SUBSCRIBE, "estop")
+        poller = zmq.Poller()
+        poller.register(sub, zmq.POLLIN)
+        while self._running:
+            if dict(poller.poll(timeout=100)):
+                _, raw = sub.recv_multipart()
+                d = unpack(raw)
+                if d.get("t") in ("ctrl_stop", "estop") and self.backend is not None:
+                    self.backend.interrupt()
+        sub.close()
 
     def _formation_from_poses(self) -> list:
         pp = self._poses[PAYLOAD_ID]
@@ -197,6 +223,8 @@ class AgentRunner:
                     self._paused = False
                     self._printed_waiting = False
                     self.controller = None  # re-calibrate formation from current poses
+                    if self.backend is not None:
+                        self.backend.clear_interrupt()
                     print(f"[agent {self._id}] goal updated to "
                           f"({d['x']:.2f}, {d['y']:.2f}, {d['theta']:.2f} rad) "
                           f"tol={self._goal_tol:.2f} m")
@@ -311,9 +339,10 @@ class AgentRunner:
                         vx_b =  c * vx_w + s * vy_w
                         vy_b = -s * vx_w + c * vy_w
                         self._ros.send_cmd(vx_b, vy_b)
-                    except TimeoutError:
-                        print(f"[agent {self._id}] GBP barrier timeout — "
-                              f"peer likely soft-stopped; pausing and resetting controller")
+                    except (TimeoutError, InterruptedError) as e:
+                        label = "interrupted" if isinstance(e, InterruptedError) else "timeout"
+                        print(f"[agent {self._id}] GBP barrier {label} — "
+                              f"pausing and resetting controller")
                         self._paused = True
                         self.controller = None  # re-calibrate formation on resume
                         self._ros.send_cmd(0.0, 0.0)

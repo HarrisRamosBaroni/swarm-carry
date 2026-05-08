@@ -13,6 +13,7 @@ Usage (on each robot):
     )
     # API is identical to SingleAgentROS2Backend / SimulatedBackend
 """
+import threading
 import time
 import msgpack
 import numpy as np
@@ -87,6 +88,8 @@ class ZeroMQSingleAgentBackend(CommunicationBackend):
         self._poller = zmq.Poller()
         for sub in self._subs:
             self._poller.register(sub, zmq.POLLIN)
+
+        self._interrupt_event = threading.Event()
 
         time.sleep(0.1)  # allow ZeroMQ connections to establish
 
@@ -169,6 +172,8 @@ class ZeroMQSingleAgentBackend(CommunicationBackend):
 
         deadline = time.monotonic() + self._barrier_timeout
         while self._received_count < self._expected:
+            if self._interrupt_event.is_set():
+                raise InterruptedError("barrier interrupted by stop signal")
             if time.monotonic() > deadline:
                 raise TimeoutError(
                     f"ZeroMQSingleAgentBackend barrier timeout. "
@@ -184,6 +189,13 @@ class ZeroMQSingleAgentBackend(CommunicationBackend):
                         self._received_count += 1
         self._current_epoch += 1
         self._stats["barrier_calls"] += 1
+
+    def interrupt(self) -> None:
+        """Unblock a synchronous barrier() immediately."""
+        self._interrupt_event.set()
+
+    def clear_interrupt(self) -> None:
+        self._interrupt_event.clear()
 
     @property
     def is_synchronous(self) -> bool:
