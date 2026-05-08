@@ -197,6 +197,7 @@ class AgentRunner:
                     self._goal_tol = float(d.get("tol", self._goal_tol))
                     self._paused = False
                     self._printed_waiting = False
+                    self.controller = None  # re-calibrate formation from current poses
                     print(f"[agent {self._id}] goal updated to "
                           f"({d['x']:.2f}, {d['y']:.2f}, {d['theta']:.2f} rad) "
                           f"tol={self._goal_tol:.2f} m")
