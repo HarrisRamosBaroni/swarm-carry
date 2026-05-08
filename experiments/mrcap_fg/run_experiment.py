@@ -73,7 +73,7 @@ def run_single(
         num_robots=n_robots,
         formation=formation,
         config={"horizon": horizon, "v_max": v_max, "sigma_x": 0.5,
-                "sigma_u": 0.3, "sigma_anchor": 0.01, "estimate_centroid": True},
+                "sigma_u": 0.3, "sigma_anchor": 0.01, "estimate_centroid": False},
     )
 
     obs = env.reset()
