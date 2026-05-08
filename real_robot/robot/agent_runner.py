@@ -215,6 +215,9 @@ class AgentRunner:
                     self._ros.send_cmd(d["vx"], d["vy"])
                     self._cmd_count += 1
 
+            if not self._running:
+                continue  # skip tick — lets outer while check _running and exit cleanly
+
             self._ros.spin_once()
 
             now = time.monotonic()
