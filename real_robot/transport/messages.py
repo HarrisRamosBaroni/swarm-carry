@@ -59,11 +59,11 @@ def goal_msg(x: float, y: float, theta: float, tol: float) -> bytes:
     })
 
 
-def cmd_msg(robot_id: int, vx: float, vy: float) -> bytes:
+def cmd_msg(robot_id: int, vx: float, vy: float, omega: float = 0.0) -> bytes:
     return msgpack.packb({
         "t": "cmd",
         "id": robot_id,
-        "vx": vx, "vy": vy,
+        "vx": vx, "vy": vy, "omega": omega,
     })
 
 

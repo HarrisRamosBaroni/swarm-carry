@@ -275,8 +275,9 @@ def main():
     def _reset_worker():
         time.sleep(0.1)  # let ctrl_stop propagate before we start sending cmd
 
-        targets = _snap["poses"][:n, :2]
+        targets = _snap["poses"][:n]  # (n, 3): x, y, theta
         KP, V_MAX, TOL = 1.2, 0.15, 0.05
+        KP_TH, OMEGA_MAX, TOL_TH = 1.5, 0.6, 0.05
         DT = 0.05
 
         while _reset_state["running"]:
@@ -288,10 +289,18 @@ def main():
                 if np.any(np.isnan(rp[i])):
                     all_done = False
                     continue
-                err = targets[i] - rp[i, :2]
+                err = targets[i, :2] - rp[i, :2]
                 dist = np.linalg.norm(err)
-                if dist > TOL:
+                th_err = targets[i, 2] - rp[i, 2]
+                th_err = (th_err + np.pi) % (2 * np.pi) - np.pi  # wrap to [-pi, pi]
+
+                pos_done = dist <= TOL
+                theta_done = abs(th_err) <= TOL_TH
+                if not (pos_done and theta_done):
                     all_done = False
+
+                vx_b = vy_b = 0.0
+                if not pos_done:
                     v_world = KP * err
                     mag = np.linalg.norm(v_world)
                     if mag > V_MAX:
@@ -300,9 +309,12 @@ def main():
                     cr, sr = np.cos(th), np.sin(th)
                     vx_b =  cr * v_world[0] + sr * v_world[1]
                     vy_b = -sr * v_world[0] + cr * v_world[1]
-                    pub.send_multipart([b"cmd", cmd_msg(i, vx_b, vy_b)])
-                else:
-                    pub.send_multipart([b"cmd", cmd_msg(i, 0.0, 0.0)])
+
+                omega = 0.0
+                if not theta_done:
+                    omega = np.clip(KP_TH * th_err, -OMEGA_MAX, OMEGA_MAX)
+
+                pub.send_multipart([b"cmd", cmd_msg(i, vx_b, vy_b, omega)])
 
             if all_done:
                 print("[control_panel] reset: all robots reached snapshot poses")
@@ -406,14 +418,14 @@ def main():
             payload_theta_text.set_text("payload θ: —")
 
         if _reset_state["running"] and _snap["poses"] is not None:
-            errs = []
+            parts = []
             for i in range(n):
                 if not np.any(np.isnan(rp[i])):
-                    errs.append(np.linalg.norm(_snap["poses"][i, :2] - rp[i, :2]))
-            if errs:
-                err_str = "  ".join(f"r{i}:{errs[i]*100:.0f}cm"
-                                    for i in range(len(errs)))
-                status_text.set_text(f"[RESET] {err_str}  — click Reset Pose to cancel")
+                    d = np.linalg.norm(_snap["poses"][i, :2] - rp[i, :2])
+                    th_e = (_snap["poses"][i, 2] - rp[i, 2] + np.pi) % (2*np.pi) - np.pi
+                    parts.append(f"r{i}:{d*100:.0f}cm {np.degrees(th_e):.0f}°")
+            if parts:
+                status_text.set_text("[RESET] " + "  ".join(parts) + "  — click to cancel")
             status_text.get_bbox_patch().set_facecolor("lightyellow")
         elif not _reset_state["running"] and btn_reset.label.get_text() == "Cancel Reset":
             btn_reset.label.set_text("Reset Pose")

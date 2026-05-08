@@ -44,11 +44,12 @@ class ROS1Bridge:
         with self._lock:
             return dict(self._odom)
 
-    def send_cmd(self, vx: float, vy: float) -> None:
+    def send_cmd(self, vx: float, vy: float, omega: float = 0.0) -> None:
         """Send mecanum velocity command in robot frame."""
         twist = Twist()
         twist.linear.x = vx
         twist.linear.y = vy
+        twist.angular.z = omega
         self._cmd_pub.publish(twist)
 
     def spin_once(self) -> None:

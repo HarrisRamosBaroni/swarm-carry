@@ -213,7 +213,7 @@ class AgentRunner:
                         print(f"[agent {self._id}] first payload pose received "
                               f"x={d['x']:.2f} y={d['y']:.2f}")
                 elif t == "cmd" and d.get("id") == self._id:
-                    self._ros.send_cmd(d["vx"], d["vy"])
+                    self._ros.send_cmd(d["vx"], d["vy"], d.get("omega", 0.0))
                     self._cmd_count += 1
 
             if not self._running:
