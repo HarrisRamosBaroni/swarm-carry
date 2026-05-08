@@ -42,6 +42,9 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+import matplotlib.pyplot as plt
+from collections import defaultdict
+
 import numpy as np
 
 from swarmlib.simulation.mecanum_env import MecanumTransportEnv
@@ -77,6 +80,12 @@ distances_to_goal = [i * 3 for i in range(1,11)]
 numbers_of_robots = [2,3,4] #TODO look into getting more robots in formation, currently max of 4
 
 horizons = [i * 3 for i in range(1,11)]
+
+#overwrite to simpler vals for testing
+# distances_to_goal = [5, 10]
+# horizons = [10, 15]
+# ControllersList = [MRCapController, DRCapDistributedController]
+
 
 #defaults
 default_distance = 5.0
@@ -379,6 +388,71 @@ def run_single(
     }
 
 
+
+def plot_results(results):
+    import matplotlib.pyplot as plt
+    import numpy as np
+    from collections import defaultdict
+
+    def plot_metric_vs_x(x_key, y_key, y_label):
+        plt.figure()
+
+        controllers = sorted(set(r["controller"] for r in results))
+
+        for ctrl in controllers:
+            ctrl_data = [r for r in results if r["controller"] == ctrl]
+
+            x_vals = sorted(set(r[x_key] for r in ctrl_data))
+
+            y_vals = []
+            for x in x_vals:
+                subset = [r[y_key] for r in ctrl_data if r[x_key] == x]
+
+                # Handle success separately (bool → float)
+                if y_key == "success":
+                    subset = [float(s) for s in subset]
+
+                y_vals.append(np.mean(subset) if subset else np.nan)
+
+            plt.plot(x_vals, y_vals, marker='o', label=ctrl)
+
+        plt.xlabel(x_key.replace("_", " ").title())
+        plt.ylabel(y_label)
+        plt.title(f"{y_label} vs {x_key.replace('_',' ')}")
+        plt.legend()
+        plt.grid()
+
+    # -------------------------
+    # SUCCESS
+    # -------------------------
+    plot_metric_vs_x("n_robots", "success", "Success rate")
+    plot_metric_vs_x("distance", "success", "Success rate")
+    plot_metric_vs_x("horizon", "success", "Success rate")
+
+    # -------------------------
+    # SOLVE TIME
+    # -------------------------
+    plot_metric_vs_x("n_robots", "solve_time_mean", "Solve time (ms)")
+    plot_metric_vs_x("distance", "solve_time_mean", "Solve time (ms)")
+    plot_metric_vs_x("horizon", "solve_time_mean", "Solve time (ms)")
+
+    # -------------------------
+    # FINAL ERROR
+    # -------------------------
+    plot_metric_vs_x("n_robots", "final_error", "Final error (m)")
+    plot_metric_vs_x("distance", "final_error", "Final error (m)")
+    plot_metric_vs_x("horizon", "final_error", "Final error (m)")
+
+    # -------------------------
+    # TIME TO COMPLETE
+    # -------------------------
+    plot_metric_vs_x("n_robots", "time", "Time to complete (s)")
+    plot_metric_vs_x("distance", "time", "Time to complete (s)")
+    plot_metric_vs_x("horizon", "time", "Time to complete (s)")
+
+    plt.show()
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -421,6 +495,11 @@ def main():
     # print(f"{'='*60}\n")
 
     all_results = []
+    all_results_plotting = []
+    robot_num_resuts_plotting = []
+    distance_resuts_plotting = []
+    horizon_resuts_plotting = []
+
 
     #TEST NUMBER OF ROBOTS
     for idx, n in enumerate(n_values):
@@ -443,6 +522,23 @@ def main():
                 ChosenController=controller
             )
             all_results.append(result)
+            all_results_plotting.append({
+                "controller": controller.__name__,
+                "n_robots": n,
+                "distance": default_distance,
+                "horizon": default_horizon,
+
+                "time": result["sim_time"],
+                "success": result["success"],
+                "final_error": result["final_error_m"],
+                "deviation": result["mean_deviation_m"],
+                "solve_time_mean": result["solve_time_mean_ms"],
+                "solve_time_std": result["solve_time_std_ms"],
+
+                # optional if available
+                "gbp_iters": result.get("gbp_iters_mean"),
+                "messages": result.get("msgs"),
+            })
 
             status = "SUCCESS" if result["success"] else "TIMEOUT"
             print(
@@ -476,6 +572,23 @@ def main():
                 ChosenController=controller
             )
             all_results.append(result)
+            all_results_plotting.append({
+                "controller": controller.__name__,
+                "n_robots": default_robot_num,
+                "distance": dist,
+                "horizon": default_horizon,
+
+                "time": result["sim_time"],
+                "success": result["success"],
+                "final_error": result["final_error_m"],
+                "deviation": result["mean_deviation_m"],
+                "solve_time_mean": result["solve_time_mean_ms"],
+                "solve_time_std": result["solve_time_std_ms"],
+
+                # optional if available
+                "gbp_iters": result.get("gbp_iters_mean"),
+                "messages": result.get("msgs"),
+            })
 
             status = "SUCCESS" if result["success"] else "TIMEOUT"
             print(
@@ -493,7 +606,7 @@ def main():
             print(f"Running horizon={horizon} with controller:{controller} ...", flush=True)
             result = run_single(
                 n_robots=default_robot_num,
-                distance=dist,
+                distance=default_distance,
                 max_time=args.max_time,
                 success_threshold=args.threshold,
                 horizon=horizon,
@@ -508,6 +621,23 @@ def main():
                 ChosenController=controller
             )
             all_results.append(result)
+            all_results_plotting.append({
+                "controller": controller.__name__,
+                "n_robots": default_robot_num,
+                "distance": default_distance,
+                "horizon": horizon,
+
+                "time": result["sim_time"],
+                "success": result["success"],
+                "final_error": result["final_error_m"],
+                "deviation": result["mean_deviation_m"],
+                "solve_time_mean": result["solve_time_mean_ms"],
+                "solve_time_std": result["solve_time_std_ms"],
+
+                # optional if available
+                "gbp_iters": result.get("gbp_iters_mean"),
+                "messages": result.get("msgs"),
+            })
 
             status = "SUCCESS" if result["success"] else "TIMEOUT"
             print(
@@ -518,36 +648,6 @@ def main():
                 f"  msgs={result['messages_sent']}"
                 f"  (dropped={result['messages_dropped']})"
             )
-
-    # for idx, n in enumerate(n_values):
-    #     print(f"Running n={n} ...", flush=True)
-    #     result = run_single(
-    #         n_robots=n,
-    #         distance=args.distance,
-    #         max_time=args.max_time,
-    #         success_threshold=args.threshold,
-    #         horizon=args.horizon,
-    #         v_max=args.v_max,
-    #         payload_mass=args.payload_mass,
-    #         backend_kind=args.backend,
-    #         topology_kind=args.topology,
-    #         dropout=args.dropout,
-    #         gbp_max_iters=args.gbp_max_iters,
-    #         visualise=args.vis and idx == 0,
-    #         sim_speed=args.sim_speed,
-    #         ChosenController=ForceDistributedController
-    #     )
-    #     all_results.append(result)
-
-        # status = "SUCCESS" if result["success"] else "TIMEOUT"
-        # print(
-        #     f"  [{status}]  final_error={result['final_error_m']:.3f} m"
-        #     f"  deviation={result['mean_deviation_m']:.3f} m"
-        #     f"  solve={result['solve_time_mean_ms']:.1f}±{result['solve_time_std_ms']:.1f} ms"
-        #     f"  gbp_iters_mean={result['gbp_iters_mean']:.1f}"
-        #     f"  msgs={result['messages_sent']}"
-        #     f"  (dropped={result['messages_dropped']})"
-        # )
 
     # Summary table
     print(f"\n{'='*90}")
@@ -565,25 +665,27 @@ def main():
         )
     print(f"{'='*90}\n")
 
-    out = {
-        "experiment":  "drcap_distributed_scaling",
-        "timestamp":   datetime.now().isoformat(),
-        "params": {
-            "distance_m":   args.distance,
-            "max_time_s":   args.max_time,
-            "horizon":      args.horizon,
-            "v_max":        args.v_max,
-            "threshold_m":  args.threshold,
-            "backend":      args.backend,
-            "topology":     args.topology,
-            "dropout":      args.dropout,
-            "gbp_max_iters": args.gbp_max_iters,
-        },
-        "results": all_results,
-    }
-    out_path = Path(__file__).parent / "results.json"
-    out_path.write_text(json.dumps(out, indent=2))
-    print(f"Results saved to {out_path}")
+    # out = {
+    #     "experiment":  "drcap_distributed_scaling",
+    #     "timestamp":   datetime.now().isoformat(),
+    #     "params": {
+    #         "distance_m":   args.distance,
+    #         "max_time_s":   args.max_time,
+    #         "horizon":      args.horizon,
+    #         "v_max":        args.v_max,
+    #         "threshold_m":  args.threshold,
+    #         "backend":      args.backend,
+    #         "topology":     args.topology,
+    #         "dropout":      args.dropout,
+    #         "gbp_max_iters": args.gbp_max_iters,
+    #     },
+    #     "results": all_results,
+    # }
+    # out_path = Path(__file__).parent / "results.json"
+    # out_path.write_text(json.dumps(out, indent=2))
+    # print(f"Results saved to {out_path}")
+
+    plot_results(all_results_plotting)
 
 if __name__ == "__main__":
     main()
