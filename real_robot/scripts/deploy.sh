@@ -102,7 +102,7 @@ for i in "${!ROBOT_IDS[@]}"; do
 
   if $DO_STOP; then
     echo "    [stop] killing tmux session '$TMUX_SESSION'"
-    ssh "$REMOTE_USER@$IP" "tmux kill-session -t $TMUX_SESSION 2>/dev/null && echo stopped || echo not running; sudo -n pkill -f 'real_robot.robot.agent_runner' 2>/dev/null || true"
+    ssh "$REMOTE_USER@$IP" "tmux kill-session -t $TMUX_SESSION 2>/dev/null && echo stopped || echo not running"
   fi
 
   if $DO_YAML; then

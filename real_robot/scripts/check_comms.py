@@ -71,63 +71,48 @@ def check_ping_robot_to_robot(src_ip, dst_ip):
 # We bind a port on dst with socat/nc, then probe from src.
 # ---------------------------------------------------------------------------
 
-_NC_BIND = "python3.12 -c \"\
-import socket, time;\
-s=socket.socket();\
-s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1);\
-s.bind(('0.0.0.0', {port}));\
-s.listen(1);\
-s.settimeout(5);\
-s.accept();\
-s.close()\""
-
-_NC_PROBE = "nc -zv -w 3 {ip} {port}"
 
 
 def check_tcp_port(src_ip, dst_ip, port, timeout=12):
-    """Bind port on dst, probe from src. Returns (ok, detail)."""
-    bind_cmd = _NC_BIND.format(port=port)
-    probe_cmd = _NC_PROBE.format(ip=dst_ip, port=port)
-
-    result = {"ok": False, "detail": "listener never started"}
-    listener_ready = threading.Event()
-
+    """Temporarily listen on port at dst, probe with nc from src."""
     def _listen():
-        # We can't signal "ready" across SSH easily, so just fire and forget.
-        _ssh(dst_ip, bind_cmd, timeout=8)
+        # nc -l on Ubuntu 18.04 (netcat-openbsd): listens, accepts one connection
+        _ssh(dst_ip, f"nc -l -p {port} -w 3 >/dev/null 2>&1", timeout=8)
 
     t = threading.Thread(target=_listen, daemon=True)
     t.start()
-    time.sleep(1.0)  # give listener time to bind
+    time.sleep(0.8)  # give listener time to bind
 
-    ok, out, err = _ssh(src_ip, probe_cmd, timeout=8)
+    ok, out, err = _ssh(src_ip, f"nc -zv -w 3 {dst_ip} {port} 2>&1", timeout=8)
     t.join(timeout=3)
     return ok, (out or err)
 
 
 # ---------------------------------------------------------------------------
 # Layer 4: ZMQ PUB/SUB end-to-end
-# pub_ip binds the PUB socket; sub_ip connects and waits for a message.
+# Scripts are piped via stdin to avoid shell quoting issues.
 # ---------------------------------------------------------------------------
 
-_ZMQ_PUB = """python3.12 -c "
-import zmq, time
+_ZMQ_PUB_SCRIPT = """\
+import zmq, time, sys
+port = int(sys.argv[1])
 ctx = zmq.Context()
 s = ctx.socket(zmq.PUB)
-s.bind('tcp://*:{port}')
+s.bind(f'tcp://*:{port}')
 time.sleep(0.6)
 for _ in range(10):
     s.send_string('zmqtest:ping')
     time.sleep(0.1)
 s.close(); ctx.term()
 print('sent')
-" """
+"""
 
-_ZMQ_SUB = """python3.12 -c "
-import zmq
+_ZMQ_SUB_SCRIPT = """\
+import zmq, sys
+pub_ip, port = sys.argv[1], int(sys.argv[2])
 ctx = zmq.Context()
 s = ctx.socket(zmq.SUB)
-s.connect('tcp://{pub_ip}:{port}')
+s.connect(f'tcp://{pub_ip}:{port}')
 s.setsockopt_string(zmq.SUBSCRIBE, 'zmqtest')
 s.setsockopt(zmq.RCVTIMEO, 4000)
 try:
@@ -137,27 +122,37 @@ except zmq.Again:
     print('TIMEOUT')
 finally:
     s.close(); ctx.term()
-" """
+"""
 
 
-def check_zmq(pub_ip, pub_port, sub_ip, timeout=14):
+def _ssh_stdin(ip, script, args="", timeout=10):
+    """Run a Python script on ip by piping it via stdin."""
+    cmd = f"ssh {SSH_OPTS} {REMOTE_USER}@{ip} 'python3.12 /dev/stdin {args}'"
+    try:
+        r = subprocess.run(
+            cmd, shell=True, input=script,
+            capture_output=True, text=True, timeout=timeout,
+        )
+        return r.returncode == 0, r.stdout.strip(), r.stderr.strip()
+    except subprocess.TimeoutExpired:
+        return False, "", "timeout"
+
+
+def check_zmq(pub_ip, pub_port, sub_ip):
     """Test ZMQ message delivery from pub_ip:pub_port to sub_ip."""
-    pub_cmd = _ZMQ_PUB.format(port=pub_port)
-    sub_cmd = _ZMQ_SUB.format(pub_ip=pub_ip, port=pub_port)
-
     sub_result = {}
 
     def _run_sub():
-        ok, out, err = _ssh(sub_ip, sub_cmd, timeout=10)
+        ok, out, err = _ssh_stdin(sub_ip, _ZMQ_SUB_SCRIPT, f"{pub_ip} {pub_port}", timeout=10)
         sub_result["ok"] = ok
         sub_result["out"] = out
         sub_result["err"] = err
 
     sub_thread = threading.Thread(target=_run_sub, daemon=True)
     sub_thread.start()
-    time.sleep(0.4)  # let subscriber connect before publisher starts sending
+    time.sleep(0.4)
 
-    pub_ok, pub_out, pub_err = _ssh(pub_ip, pub_cmd, timeout=8)
+    _ssh_stdin(pub_ip, _ZMQ_PUB_SCRIPT, str(pub_port), timeout=8)
     sub_thread.join(timeout=8)
 
     out = sub_result.get("out", "")
@@ -168,7 +163,7 @@ def check_zmq(pub_ip, pub_port, sub_ip, timeout=14):
     elif not sub_result:
         return False, "subscriber SSH failed"
     else:
-        return False, f"unexpected output: {out!r} err={sub_result.get('err','')!r}"
+        return False, f"unexpected: stdout={out!r} stderr={sub_result.get('err','')!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -207,7 +202,8 @@ def main():
     for i, ra in enumerate(robots):
         for rb in robots[i + 1:]:
             if not (reachable.get(ra["id"]) and reachable.get(rb["id"])):
-                print(f"  {_label(f'robot {ra[\"id\"]} ↔ robot {rb[\"id\"]}')}{SKIP}  (robot unreachable)")
+                tag = f"robot {ra['id']} ↔ robot {rb['id']}"
+                print(f"  {_label(tag)}{SKIP}  (robot unreachable)")
                 continue
             ok_ab = check_ping_robot_to_robot(ra["ip"], rb["ip"])
             ok_ba = check_ping_robot_to_robot(rb["ip"], ra["ip"])
