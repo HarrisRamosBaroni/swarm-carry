@@ -283,14 +283,21 @@ class AgentRunner:
                     self._payload_state[2] = pp["theta"]
 
                     robot_states = np.array([[own["x"], own["y"], vx, vy]])
-                    controls = self.controller.compute_control(
-                        payload_state=self._payload_state,
-                        robot_states=robot_states,
-                        goal_state=self._goal,
-                        dt=self._dt,
-                        forces=None,  # expand once load cell format is finalised
-                    )
-                    self._ros.send_cmd(float(controls[0, 0]), float(controls[0, 1]))
+                    try:
+                        controls = self.controller.compute_control(
+                            payload_state=self._payload_state,
+                            robot_states=robot_states,
+                            goal_state=self._goal,
+                            dt=self._dt,
+                            forces=None,
+                        )
+                        self._ros.send_cmd(float(controls[0, 0]), float(controls[0, 1]))
+                    except TimeoutError:
+                        print(f"[agent {self._id}] GBP barrier timeout — "
+                              f"peer likely soft-stopped; pausing and resetting controller")
+                        self._paused = True
+                        self.controller = None  # re-calibrate formation on resume
+                        self._ros.send_cmd(0.0, 0.0)
 
                 now2 = time.monotonic()
                 if now2 - self._last_heartbeat >= 5.0:
