@@ -512,12 +512,12 @@ class ForceCentralisedControllerCVel(BaseController):
         # print('Vcentroid_opt2', Vcentroid_opt)
 
 
-        lo = np.array([-self._v_max, -self._v_max, -self._omega_max])
-        hi = np.array([ self._v_max,  self._v_max,  self._omega_max])
-
-        # U_opt = np.clip(U_opt, lo, hi)
-        # print('all_U_opt before clip',all_U_opt)
-        all_U_opt = np.clip(all_U_opt, lo, hi)
+        all_U_opt = np.asarray(all_U_opt)
+        speeds = np.hypot(all_U_opt[:, 0], all_U_opt[:, 1])
+        scale = np.where(speeds > self._v_max, self._v_max / speeds, 1.0)
+        all_U_opt[:, 0] *= scale
+        all_U_opt[:, 1] *= scale
+        all_U_opt[:, 2] = np.clip(all_U_opt[:, 2], -self._omega_max, self._omega_max)
         # print('all_U_opt after clip',all_U_opt)
         M_opt = np.clip(M_opt, 0.1, 10000) #clip mass to avoid numerical instability (especially negative or =0)
         return all_U_opt, M_opt, Vcentroid_opt

@@ -498,9 +498,11 @@ class DRCapDistributedController(BaseController):
         # (sim). All local copies converge to similar values once GBP settles.
         source_id = self.my_id if self.my_id is not None else 0
         U_c = self.local_graphs[source_id].first_control()
-        lo = np.array([-self._v_max, -self._v_max, -self._omega_max])
-        hi = np.array([ self._v_max,  self._v_max,  self._omega_max])
-        U_c = np.clip(U_c, lo, hi)
+        speed = np.hypot(U_c[0], U_c[1])
+        if speed > self._v_max:
+            U_c[0] *= self._v_max / speed
+            U_c[1] *= self._v_max / speed
+        U_c[2] = np.clip(U_c[2], -self._omega_max, self._omega_max)
 
         self._set_solve_time(time.perf_counter() - t0)
         return self._robot_velocities(U_c, centroid_pose[2])

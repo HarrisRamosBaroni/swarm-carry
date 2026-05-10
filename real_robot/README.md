@@ -83,7 +83,7 @@ Flags can be combined freely: `--yaml` (scp `network.yaml` to all robots), `--pu
 **Laptop** (`launch.sh` — opens a local tmux session `swarm-laptop`):
 ```bash
 # centralised: mocap + controller + control_panel windows
-./real_robot/scripts/launch.sh --mode central --goal 2 0 0
+./real_robot/scripts/launch.sh --mode central
 
 # decentralised: mocap + control_panel windows
 ./real_robot/scripts/launch.sh --mode decentralised

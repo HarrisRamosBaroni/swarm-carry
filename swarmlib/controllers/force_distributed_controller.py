@@ -626,11 +626,13 @@ class ForceDistributedController(BaseController):
         # U_c = np.clip(U_c, lo, hi)
         #TODO check if works
         U_x = np.zeros((len(self._owned_ids), 3))
-        lo = np.array([-self._v_max, -self._v_max, -self._omega_max])
-        hi = np.array([ self._v_max,  self._v_max,  self._omega_max])
         for idx, i in enumerate(self._owned_ids):
             U_x[idx,:] = self.local_graphs[i].first_control()
-            U_x[idx,:] = np.clip(U_x[idx,:], lo, hi)
+            speed = np.hypot(U_x[idx, 0], U_x[idx, 1])
+            if speed > self._v_max:
+                U_x[idx, 0] *= self._v_max / speed
+                U_x[idx, 1] *= self._v_max / speed
+            U_x[idx, 2] = np.clip(U_x[idx, 2], -self._omega_max, self._omega_max)
 
         # U_c = np.clip(U_c, lo, hi)
 

@@ -240,9 +240,12 @@ class MRCapController(BaseController):
         result = gtsam.LevenbergMarquardtOptimizer(graph, init, params).optimize()
 
         U_opt = result.atVector(Uk(0))
-        lo = np.array([-self._v_max, -self._v_max, -self._omega_max])
-        hi = np.array([ self._v_max,  self._v_max,  self._omega_max])
-        return np.clip(U_opt, lo, hi)
+        speed = np.hypot(U_opt[0], U_opt[1])
+        if speed > self._v_max:
+            U_opt[0] *= self._v_max / speed
+            U_opt[1] *= self._v_max / speed
+        U_opt[2] = np.clip(U_opt[2], -self._omega_max, self._omega_max)
+        return U_opt
 
     # ------------------------------------------------------------------
     # Rigid-body velocity distribution

@@ -381,7 +381,7 @@ def main():
                              "centralised controller.")
     parser.add_argument("--control-hz", type=float, default=20.0)
     parser.add_argument("--horizon", type=int, default=15)
-    parser.add_argument("--v-max", type=float, default=0.25)
+    parser.add_argument("--v-max", type=float, default=0.1)
     parser.add_argument("--gbp-max-iters", type=int, default=30)
     parser.add_argument("--gbp-async", action="store_true",
                         help="Use asynchronous GBP (non-blocking barrier, uses stale beliefs)")
