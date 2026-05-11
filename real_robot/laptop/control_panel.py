@@ -27,6 +27,13 @@ from matplotlib.widgets import Slider, Button
 
 from real_robot.transport.messages import goal_msg, estop_msg, cmd_msg, ctrl_stop_msg
 
+try:
+    from real_robot.laptop.reset_planner import plan_reset as _plan_reset
+    _HAS_PLANNER = True
+except ImportError:
+    _HAS_PLANNER = False
+    print("[control_panel] gtsam not found — reset will use blind P control (no collision avoidance)")
+
 PAYLOAD_ID = -1
 ROBOT_COLORS = ["tab:blue", "tab:orange", "tab:green", "tab:red",
                 "tab:purple", "tab:brown", "tab:pink", "tab:gray"]
@@ -182,7 +189,7 @@ def main():
     _goal = {"x": 0.0, "y": 0.0, "theta": 0.0, "tol": args.goal_tol, "sent": False}
     _block_slider = [False]  # prevent re-entrant slider callbacks
     _snap = {"poses": None}           # (n, 3) robot poses at snapshot time
-    _reset_state = {"running": False}
+    _reset_state = {"running": False, "plan": None, "last_replan": 0.0, "replan_elapsed": 0.0}
 
     def _refresh_marker():
         gx, gy, gth = _goal["x"], _goal["y"], _goal["theta"]
@@ -279,29 +286,59 @@ def main():
         KP, V_MAX, TOL = 0.7, 0.1, 0.05
         KP_TH, OMEGA_MAX, TOL_TH = 1.5, 0.6, 0.05
         DT = 0.05
+        PLAN_DT = 0.5
+        PLAN_K  = 50
+        REPLAN_INTERVAL = 5.0  # seconds between replans
+
+        _reset_state["plan"] = None
+        _reset_state["last_replan"]    = -REPLAN_INTERVAL  # force plan on first iteration
+        _reset_state["replan_elapsed"] = 0.0
+        t_elapsed = 0.0
 
         while _reset_state["running"]:
             with state.lock:
                 rp = state.robot_pose.copy()
+
+            # (Re)plan if interval elapsed and all poses are known
+            time_since_replan = t_elapsed - _reset_state["last_replan"]
+            if _HAS_PLANNER and time_since_replan >= REPLAN_INTERVAL:
+                if not np.any(np.isnan(rp[:n])):
+                    try:
+                        _reset_state["plan"] = _plan_reset(rp[:n], targets)
+                        _reset_state["last_replan"]    = t_elapsed
+                        _reset_state["replan_elapsed"] = 0.0
+                        print("[control_panel] reset: (re)planned trajectories")
+                    except Exception as exc:
+                        print(f"[control_panel] reset: planner failed ({exc}), using P control")
+                        _reset_state["plan"] = None
+                        _reset_state["last_replan"] = t_elapsed  # don't retry every step
+
+            plan = _reset_state["plan"]
+            t_idx = min(int(_reset_state["replan_elapsed"] / PLAN_DT), PLAN_K - 1)
 
             all_done = True
             for i in range(n):
                 if np.any(np.isnan(rp[i])):
                     all_done = False
                     continue
-                err = targets[i, :2] - rp[i, :2]
-                dist = np.linalg.norm(err)
-                th_err = targets[i, 2] - rp[i, 2]
-                th_err = (th_err + np.pi) % (2 * np.pi) - np.pi  # wrap to [-pi, pi]
 
-                pos_done = dist <= TOL
+                dist_final = np.linalg.norm(targets[i, :2] - rp[i, :2])
+                th_err = targets[i, 2] - rp[i, 2]
+                th_err = (th_err + np.pi) % (2 * np.pi) - np.pi
+
+                pos_done   = dist_final <= TOL
                 theta_done = abs(th_err) <= TOL_TH
                 if not (pos_done and theta_done):
                     all_done = False
 
                 vx_b = vy_b = 0.0
                 if not pos_done:
-                    v_world = KP * err
+                    # Follow planned waypoint when planner available; else drive to final target
+                    if plan is not None:
+                        pos_target = plan[i, t_idx]
+                    else:
+                        pos_target = targets[i, :2]
+                    v_world = KP * (pos_target - rp[i, :2])
                     mag = np.linalg.norm(v_world)
                     if mag > V_MAX:
                         v_world = v_world / mag * V_MAX
@@ -321,6 +358,8 @@ def main():
                 break
 
             time.sleep(DT)
+            t_elapsed += DT
+            _reset_state["replan_elapsed"] += DT
 
         for i in range(n):
             pub.send_multipart([b"cmd", cmd_msg(i, 0.0, 0.0)])
