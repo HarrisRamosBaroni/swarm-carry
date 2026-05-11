@@ -7,6 +7,7 @@ from .centroid_estimator import CentroidEstimator
 from .weighted_centroid_estimator import WeightedCentroidEstimator
 from .drcap_distributed_controller import DRCapDistributedController
 from .force_distributed_controller import ForceDistributedController
+from .contact_health_distributed_controller import ContactHealthDistributedController
 
 # gtsam-dependent controllers — not available on platforms without gtsam
 try:
@@ -40,4 +41,4 @@ __all__ = ['BaseController', 'CentroidEstimator', 'WeightedCentroidEstimator',
            'MRCapController', 'DRCapController', 'DRCapDistributedController',
            'ForceCentralisedController', 'ForceCentralisedControllerCVel',
            'ForceDistributedController', 'ForcelessCentralisedControllerCVel',
-           'ContactHealthController']
+           'ContactHealthController', 'ContactHealthDistributedController']

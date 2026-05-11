@@ -113,7 +113,7 @@ class ContactHealthController(BaseController):
         # robot's nominal slot in the *estimated* centroid frame. Pulls a
         # slipping bot back into formation geometrically; complements the
         # force-based wall recovery, which reattaches it physically.
-        self._pos_kp      = float(cfg.get("pos_kp",        0.0))
+        self._pos_kp      = float(cfg.get("pos_kp",        1.0))
 
         # Ablation switches
         self._use_weighted  = bool(cfg.get("use_weighted_anchor",    True))
