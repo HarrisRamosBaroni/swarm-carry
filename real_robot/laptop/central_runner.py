@@ -33,7 +33,7 @@ from real_robot.transport.messages import cmd_msg, unpack
 
 PAYLOAD_ID = -1  # sentinel id used by mocap_bridge for the payload rigid body
 
-_CENTRAL_CONTROLLERS = ("mrcap", "force_cvel", "forceless")
+_CENTRAL_CONTROLLERS = ("mrcap", "force_cvel", "forceless", "contact_health")
 
 
 def _make_central_controller(name, num_robots, formation, config):
@@ -41,11 +41,13 @@ def _make_central_controller(name, num_robots, formation, config):
         MRCapController,
         ForceCentralisedControllerCVel,
         ForcelessCentralisedControllerCVel,
+        ContactHealthController,
     )
     classes = {
-        "mrcap":      MRCapController,
-        "force_cvel": ForceCentralisedControllerCVel,
-        "forceless":  ForcelessCentralisedControllerCVel,
+        "mrcap":          MRCapController,
+        "force_cvel":     ForceCentralisedControllerCVel,
+        "forceless":      ForcelessCentralisedControllerCVel,
+        "contact_health": ContactHealthController,
     }
     ctrl = classes[name](num_robots=num_robots, formation=formation, config=config)
     ctrl.reset()
@@ -224,6 +226,15 @@ class CentralRunner:
                 robot_states=robot_states,
                 goal_state=goal_state,
                 dt=dt,
+            )
+        elif name == "contact_health":
+            return ctrl.compute_control(
+                payload_state=payload_state,
+                robot_states=robot_states,
+                goal_state=goal_state,
+                dt=dt,
+                wall_forces=forces[:, 0],
+                base_forces=forces[:, 2],
             )
         else:  # mrcap
             return ctrl.compute_control(

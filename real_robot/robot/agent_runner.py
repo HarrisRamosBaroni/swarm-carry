@@ -28,14 +28,19 @@ from swarmlib.communication.zmq_backend import ZeroMQSingleAgentBackend
 
 PAYLOAD_ID = -1  # sentinel id mocap_bridge uses for the payload rigid body
 
-_AGENT_CONTROLLERS = ("drcap", "force_distributed")
+_AGENT_CONTROLLERS = ("drcap", "force_distributed", "contact_health_distributed")
 
 
 def _make_agent_controller(name, num_robots, formation, backend, my_id, config):
-    from swarmlib.controllers import DRCapDistributedController, ForceDistributedController
+    from swarmlib.controllers import (
+        DRCapDistributedController,
+        ForceDistributedController,
+        ContactHealthDistributedController,
+    )
     classes = {
-        "drcap":             DRCapDistributedController,
-        "force_distributed": ForceDistributedController,
+        "drcap":                      DRCapDistributedController,
+        "force_distributed":          ForceDistributedController,
+        "contact_health_distributed": ContactHealthDistributedController,
     }
     if name not in classes:
         raise ValueError(f"unknown controller '{name}'; choices: {sorted(classes)}")
@@ -117,6 +122,10 @@ class AgentRunner:
         self._poses = {}           # robot_id → latest pose message dict
         self._own_prev_pose = None  # for velocity differentiation
         self._payload_state = np.zeros(6)
+        # (n, 3) with col 0=horizontal/wall, col 2=vertical/base — matches central_runner.
+        # Only own row is populated; neighbor force entries stay zero (controllers in
+        # deploy mode only ever read their own row, per ForceDistributed/ContactHealth).
+        self._forces = np.zeros((n_robots, 3))
 
         self._paused = False      # set by ctrl_stop; cleared when a new goal arrives
         self._goal_tol = 0.15
@@ -197,6 +206,37 @@ class AgentRunner:
             offsets.append((float(r_body[0]), float(r_body[1]), 0.0))
         return offsets
 
+    def _invoke_controller(self, payload_state, robot_states, goal_state, dt):
+        """Dispatch to compute_control with controller-specific force kwargs."""
+        name = self._controller_name
+        ctrl = self.controller
+        if name == "force_distributed":
+            # force_distributed expects (2, n_robots): row 0=base/vertical, row 1=wall/horizontal.
+            forces = np.stack([self._forces[:, 2], self._forces[:, 0]])
+            return ctrl.compute_control(
+                payload_state=payload_state,
+                robot_states=robot_states,
+                goal_state=goal_state,
+                dt=dt,
+                forces=forces,
+            )
+        elif name == "contact_health_distributed":
+            return ctrl.compute_control(
+                payload_state=payload_state,
+                robot_states=robot_states,
+                goal_state=goal_state,
+                dt=dt,
+                wall_forces=self._forces[:, 0],
+                base_forces=self._forces[:, 2],
+            )
+        else:  # drcap
+            return ctrl.compute_control(
+                payload_state=payload_state,
+                robot_states=robot_states,
+                goal_state=goal_state,
+                dt=dt,
+            )
+
     def run(self):
         poller = zmq.Poller()
         poller.register(self._sub, zmq.POLLIN)
@@ -253,6 +293,12 @@ class AgentRunner:
                 lc_readings = self._lc.read()
                 raw_force = force_msg(self._id, lc_readings)
                 self._pub.send_multipart([b"force", raw_force])
+
+                for r in lc_readings:
+                    if r["label"] == "horizontal":
+                        self._forces[self._id, 0] = r["value"]
+                    elif r["label"] == "vertical":
+                        self._forces[self._id, 2] = r["value"]
 
                 if not self._passive:
                     if self._paused:
@@ -326,12 +372,11 @@ class AgentRunner:
 
                     robot_states = np.array([[own["x"], own["y"], own["theta"], vx, vy]])
                     try:
-                        controls = self.controller.compute_control(
+                        controls = self._invoke_controller(
                             payload_state=self._payload_state,
                             robot_states=robot_states,
                             goal_state=self._goal,
                             dt=self._dt,
-                            forces=None,
                         )
                         theta = own["theta"]
                         c, s = np.cos(theta), np.sin(theta)
