@@ -12,13 +12,19 @@ or whether one robot has lost contact entirely. Per-robot reaction forces at
 the contact interface are physically present at all times but never enter
 the factor graph.
 
-This experiment introduces force sensing at the robot–payload interface as a
-*contact-health observation channel* feeding two points in the MR.CAP factor
-graph: the centroid-pose anchor and the control regulariser. The structural
-question being tested is **whether per-robot normal-force measurements admit
-defensible, FG-native uses that the pose-only MR.CAP formulation cannot
-replicate** — without enlarging the FG variable set beyond MR.CAP's
-$O(1)$-in-$n$ structure.
+This experiment introduces force sensing at the robot–payload interface as
+a *contact-health observation channel* feeding four points in the MR.CAP
+control loop: (i) the centroid-pose anchor (via weighted Procrustes), (ii)
+the control regulariser (via a $\sigma_u$ modulator, retained as a
+contingent safeguard), (iii) a per-robot bidirectional wall-force regulator
+applied post-solve, and (iv) a contact-health-gated per-robot position lock
+in the estimated centroid frame. The structural question being tested is
+**whether per-robot normal-force measurements admit defensible uses that
+the pose-only MR.CAP formulation cannot replicate** — without enlarging the
+FG variable set beyond MR.CAP's $O(1)$-in-$n$ structure. The motivating
+insight is that *only force can evaluate loss of contact*: a pose-only
+estimator cannot tell a well-gripping robot from one that has slipped past
+the payload, because both look the same in pose.
 
 ## Setup
 
@@ -159,18 +165,21 @@ with $\sigma_u^0 = 0.3$ (MR.CAP default) and $\alpha$ a tuning constant
 
 **Interpretation.** When $\bar F_k$ exceeds the nominal squeeze setpoint, the
 robots are collectively pressing harder into the payload than necessary —
-diagnostic of *dragging*, i.e. the formation is internally stressed because
-robots are commanding forward velocities the payload can't sustain (likely
-due to wheel-PD undershoot or transient external resistance). Reducing
-$\sigma_u^{\text{eff}}$ tightens the regulariser, pulling commanded velocities
-back toward zero and relieving the stress.
+diagnostic of *dragging*. Reducing $\sigma_u^{\text{eff}}$ tightens the
+regulariser, pulling commanded velocities back toward zero and relieving the
+stress. The factor is one-sided — it only activates for $\bar F_k >
+F_{wall}^*$.
 
-The factor is **asymmetric** — it only activates for $\bar F_k > F_{wall}^*$.
-Below-target squeeze cannot be fixed by slowing the formation down; it
-requires *per-robot inward motion*, which is structurally outside MR.CAP's
-variable set (robot velocities are a deterministic function of the centroid
-control $\mathbf{u}_k$). The complementary action is handled outside the
-factor graph by the per-robot contact-recovery term defined below.
+**Empirical caveat.** This factor is included for theoretical completeness
+and as a safety layer under aggressive operating regimes (heavy payload,
+tight reference, external resistive disturbance). In the no-disturbance
+translation experiments to date, MR.CAP-style controllers drift to *under*-
+squeeze, not over-squeeze: $\bar F_k$ stays well below $F_{wall}^*$ for the
+duration of the run, so this factor is dormant. The dominant failure mode
+addressed in this work is therefore the *opposite* one — marginal grip —
+handled by the per-robot recovery and gated position-lock terms below. The
+$\sigma_u$ modulator is retained as a contingent safeguard rather than a
+load-bearing component of the contribution.
 
 The factor cost is:
 $$
@@ -192,63 +201,95 @@ centroid control.
 
 Rather than expanding the FG variable set to per-robot decisions (which is
 the direction `experiments/centralised_force_fg_cvel/` takes, with substantial
-implementation cost), we add a small **post-solve per-robot correction**:
+implementation cost), we add a small **post-solve per-robot correction**, a
+bidirectional P-controller on each robot's own wall force:
 $$
 \mathbf{v}_i^{\text{cmd}}
 = \mathbf{v}_i^{\text{rigid}}(\mathbf{u}_k^*)
-+ \beta \, \bigl(F_{wall}^* - F_{wall,i}\bigr)^+ \, \hat{n}_i
++ \beta \, \bigl(F_{wall}^* - F_{wall,i}\bigr) \, \hat{n}_i
 $$
 where $\hat{n}_i = [\cos\theta_i, \sin\theta_i]^\top$ is robot $i$'s forward
 axis in the world frame (the direction that drives the fork wall *into* the
-payload), $(\cdot)^+ = \max(\cdot, 0)$, and $\beta$ is a small gain (default
-$\beta = 0.005\,\text{m s}^{-1} \text{N}^{-1}$, i.e. a $20\,\text{N}$
-under-squeeze produces a $0.1\,\text{m/s}$ inward correction).
+payload), and $\beta$ is a small gain (default $\beta = 0.005\,\text{m
+s}^{-1}\,\text{N}^{-1}$). The sign is automatic:
+$F_{wall,i} < F_{wall}^*$ produces $+\hat n_i$ (push into payload, engage);
+$F_{wall,i} > F_{wall}^*$ produces $-\hat n_i$ (back away, relieve).
+Equilibrium is at $F_{wall,i} \approx F_{wall}^*$.
 
-This term is per-robot and reactive — it acts only on robots whose own
-$F_{wall,i}$ has fallen below target. It violates the rigid-body kinematic
+This term is per-robot and reactive. It violates the rigid-body kinematic
 invariant by $O(\beta \Delta t)$ per step, which is intentional: the
 formation is allowed to self-correct against the open-loop drift that MR.CAP
 ignores. The resulting non-nominal poses are absorbed by the weighted-
-Procrustes anchor in the next step (a robot mid-recovery has $F_{wall,i} <
-F_{wall}^*$ and so its pose is down-weighted in the centroid estimate
-until it re-engages).
+Procrustes anchor in the next step (a robot whose $F_{wall,i}$ has fallen
+below target is down-weighted in the centroid estimate until it re-engages).
 
-**Symmetry.** The three changes together form a symmetric closed loop
-around the rigid-body assumption:
+**Sensor caveat (acknowledged).** Because $F_{wall,i} \geq 0$ is a magnitude
+of compressive contact, the signal cannot distinguish "robot being pushed
+away by payload" (legitimate back-off) from "robot generating necessary
+reaction force during a maneuver" (false alarm). The bidirectional response
+is therefore only safe in combination with the position-lock layer below,
+which re-asserts formation geometry against spurious "back off" commands.
+Force-recovery alone, applied bidirectionally, was observed to release the
+formation under aggressive maneuvers; the two layers together are stable on
+the pure-translation goals targeted in this work.
+
+**Symmetry.** The four contact-health components together form a closed
+loop around the rigid-body assumption:
 
 | Regime | Signal | Response |
 |--------|--------|----------|
 | All healthy | $w_i \approx 1$, $\bar F_k \approx F_{wall}^*$ | Reduces exactly to MR.CAP |
-| Excess squeeze | $\bar F_k > F_{wall}^*$ | Regulariser shrinks $\sigma_u^{\text{eff}}$ → collective slowdown |
-| Pose-degraded contact | $w_i \ll 1$ on one or more robots | Weighted anchor de-trusts the affected robot's pose |
-| Marginal squeeze | $F_{wall,i} < F_{wall}^*$ on one or more robots | Per-robot $\hat{n}_i$ correction nudges the robot inward |
+| Per-robot under-squeeze | $F_{wall,i} < F_{wall}^*$ | Force-recovery nudges robot $i$ inward along $\hat n_i$ |
+| Per-robot over-squeeze | $F_{wall,i} > F_{wall}^*$ | Force-recovery backs robot $i$ off along $-\hat n_i$ |
+| Pose-degraded contact | $w_i \ll 1$ on one or more robots | Weighted anchor de-trusts the affected robot; gated pos-lock pulls it back toward consensus formation |
+| Collective over-squeeze | $\bar F_k > F_{wall}^*$ (rare, contingent) | $\sigma_u$ modulator tightens regulariser → collective slowdown |
 
-### Per-robot position lock (kinematic counterpart to recovery)
+### Contact-health-gated per-robot position lock
 
 The wall-force recovery above reattaches a slipping robot *physically* but
 gives no geometric anchor: the robot may re-engage at a position that is
 not its formation slot. We add a small per-robot P loop on position error
-in the *estimated* centroid frame:
+in the *estimated* centroid frame, **gated by the same contact-health
+weights $w_i$** used by the weighted Procrustes anchor:
 $$
 \mathbf{p}_i^\text{des} = \hat{\mathbf{p}}_k + R(\hat{\theta}_k)\,\mathbf{r}_i,
 \qquad
-\mathbf{v}_i^\text{cmd} \mathrel{+}= K_p\,\bigl(\mathbf{p}_i^\text{des} - \mathbf{p}_i\bigr)
+\mathbf{v}_i^\text{cmd} \mathrel{+}= (1 - w_i)\,K_p\,\bigl(\mathbf{p}_i^\text{des} - \mathbf{p}_i\bigr)
 $$
-with default $K_p = 2.0$. No new GT dependency — the desired slot is
+with default $K_p = 1.0$. No new GT dependency — the desired slot is
 defined entirely by the weighted-Procrustes output $\hat{\mathbf{c}}_k$
 and the (assumed-known) robot poses.
+
+**Why gate by $(1 - w_i)$.** The force-recovery and pos-lock terms encode
+two distinct equilibria:
+- Force-recovery wants $F_{wall,i} = F_{wall}^*$ — a *physical* equilibrium
+  at the radial distance that produces the target compressive force, given
+  local geometry and payload deformation.
+- Pos-lock wants $\mathbf{p}_i = \mathbf{p}_i^\text{des}$ — a *geometric*
+  equilibrium at a predefined slot.
+
+These disagree when the geometric formation slot and the force-equilibrium
+slot differ (e.g. the front robot in $n=3$ bears different reaction load
+than the side robots). Ungated pos-lock fights force-recovery on the
+asymmetric robots and produces visibly uneven grip across the formation.
+Gating by $(1 - w_i)$ resolves the conflict: a healthy robot ($w_i \approx
+1$) sees gate $\approx 0$ and is left to its force equilibrium; a robot
+that has lost contact ($w_i \approx \epsilon$) sees gate $\approx 1$ and is
+snapped back toward its slot until it re-engages, at which point its weight
+rises and pos-lock fades. Force is the trustworthy signal *when contact
+exists*; geometry is the fallback *when force is uninformative*.
 
 **Self-consistency property.** Because the centroid estimate is itself
 weighted by contact health, well-gripped robots dominate the consensus
 frame; a slipping robot — already down-weighted in $\hat{\mathbf{c}}_k$ —
-is then commanded back to its slot in the frame the *other* robots
-collectively define. The kinematic loop and the estimator close around
-each other: bots that maintain grip define "where the formation is";
-bots that lose grip are pulled toward where they should be in that
-shared frame. This is the kinematic analogue of $\beta$ — recovery in
-the position domain rather than the wall-force domain — and it is
-something MR.CAP cannot do, because its open-loop $\mathbf{u}_k \to
-\mathbf{v}_i^{\text{rigid}}$ map has no per-robot position feedback term.
+is commanded back to its slot in the frame the *other* robots collectively
+define. The kinematic loop and the estimator close around each other:
+robots that maintain grip define "where the formation is"; robots that
+lose grip are pulled toward where they should be in that shared frame.
+This is the kinematic analogue of $\beta$ — recovery in the position
+domain rather than the wall-force domain — and it is something MR.CAP
+cannot do, because its open-loop $\mathbf{u}_k \to \mathbf{v}_i^{\text{rigid}}$
+map has no per-robot position feedback term.
 
 ### Orientation goals — out of scope
 
@@ -302,70 +343,83 @@ is unchanged.**
 
 ## Hypotheses
 
-**H1 (formation-stress regulation, primary).** Over a $5\,\text{m}$ straight
-transport, the unweighted MR.CAP baseline produces unbounded drift in mean
-wall-squeeze $\bar F_k$ over time (consequence of accumulated wheel-PD
-tracking error against the open-loop kinematic constraint). The contact-health
-controller maintains $\bar F_k$ in a bounded band around $F_{wall}^*$.
+**H1 (grip maintenance, primary).** Over an $(x, y)$ translation goal, the
+MR.CAP baseline operates in a *marginal-grip* regime — its rigid-body
+kinematic map has no force feedback, so wheel-PD tracking error and payload
+reaction accumulate as formation drift, leaving $\bar F_k \ll F_{wall}^*$
+for the duration of the run. The contact-health controller maintains
+$\bar F_k$ near $F_{wall}^*$ with per-robot distribution within $\sim 25\%$
+of the target.
 
-*Metric:* time series of $\bar F_k$ across the run; primary statistic is
-$\max_k \bar F_k - F_{wall}^*$ and $\text{std}_k(\bar F_k)$.
+*Metric:* time series of $\bar F_k$ and per-robot $F_{wall,i}$ across the
+run; primary statistics are $\text{mean}_k(\bar F_k)$, per-robot mean and
+max, and per-robot spread.
 
-**H2 (force-weighted centroid estimation, primary).** Under induced contact
-degradation on one robot (low wheel friction patch from $t = t_\text{slip}$
-onward, simulated via per-geom friction override), the weighted-Procrustes
-estimator yields lower centroid pose error than the unweighted estimator,
-because the slipping robot's pose ceases to be representative.
+**H2 (force-weighted centroid estimation, primary).** From the same robot
+poses, the weighted-Procrustes estimator tracks the true payload pose to
+within a few centimetres without ground-truth payload feed, where the
+unweighted Procrustes estimator inherits any pose-only ambiguity introduced
+by formation drift. The argument is structural: **only force can evaluate
+loss of contact** — a pose-only estimator cannot distinguish "robot in good
+grip at its slot" from "robot slipping past the payload at the same pose",
+and so cannot down-weight the latter.
 
-*Metric:* $\|\hat{\mathbf{c}}_k - \mathbf{c}_k^\text{gt}\|$ averaged over
-$t \geq t_\text{slip}$; comparison between weighted and unweighted estimators
-*on the same trajectory* (no controller change), then end-to-end with the
-contact-health controller closing the loop.
+*Metric:* $\|\hat{\mathbf{c}}_k - \mathbf{c}_k^\text{gt}\|$ over the run,
+weighted vs unweighted Procrustes from identical robot-pose logs.
 
-**H3 (active contact recovery, secondary).** Under induced contact
-degradation, the post-solve per-robot recovery term restores $F_{wall,i}$
-toward $F_{wall}^*$ on the affected robot (re-engagement) without requiring
-formation reconfiguration through the FG. With all three changes active,
-the contact-health controller completes the $5\,\text{m}$ transport with
-lower final position error than the MR.CAP baseline under the induced-slip
-disturbance, despite using a degraded centroid estimate during the recovery
-window.
+**H3 (graceful degradation under disturbance, secondary).** Under a
+lateral disturbance applied directly to the payload (`xfrc_applied` pulse,
+analogue of an external bump), the contact-health controller maintains
+formation grip and recovers trajectory tracking faster than MR.CAP, which
+has no observation channel for the disturbance until pose drift becomes
+visible in the rigid-body estimate.
 
-*Metric:* $\|\mathbf{c}_\text{final}[:2] - \mathbf{c}_\text{goal}[:2]\|$.
+*Metric:* recovery time and peak deviation following the disturbance pulse;
+per-robot $F_{wall,i}$ traces showing whether grip is maintained throughout
+the disturbance.
 
 ## Experiment
 
-For $n \in \{3, 4\}$ robots, a surround formation (robots evenly spaced on a
-ring around the payload, forklifts engaged) is used with `MecanumTransportEnv`
-(myAGV-class kinematics, MuJoCo physics, force sensors active). The payload
-is transported $5\,\text{m}$ along the $x$-axis from rest.
+For $n \in \{3, 4\}$ robots, a face-contact formation (robots engaged on
+the cuboid payload faces via forklift contact, see
+`generate_mecanum_scene.face_contact_formation`) is used with
+`MecanumTransportEnv` (myAGV-class kinematics, MuJoCo physics, force
+sensors active). Two translation goals are used: forward $5\,\text{m}$
+and diagonal $(3, 2, 0)\,\text{m}$.
 
 Four controller conditions per run, forming an ablation:
 1. **MR.CAP baseline** (`mrcap_controller`, unweighted centroid estimator) — control reference.
 2. **+ weighted Procrustes only** (estimator swap, otherwise MR.CAP) — isolates H2.
-3. **+ weighted Procrustes + contact-health regulariser** (FG-level changes only, no per-robot recovery) — isolates H1.
-4. **Full contact-health controller** (all three changes active) — full proposal, tests H3.
+3. **+ weighted Procrustes + σ_u modulator** (FG-level changes only) — isolates the FG-internal contribution.
+4. **Full contact-health controller** (weighted Procrustes + σ_u modulator + bidirectional force-recovery + gated pos-lock) — full proposal, tests H1.
 
-The ablation lets each change be credited or discredited independently.
-
-Two scenarios per condition:
-- **A. Nominal:** all robots at full friction; tests H1.
-- **B. Induced slip:** at $t = 5\,\text{s}$, friction on one robot's wheels
-  is reduced by an order of magnitude for $2\,\text{s}$; tests H2 and H3.
+Disturbance condition for H3: a lateral $5\,\text{N}$ pulse applied to the
+payload for $0.5\,\text{s}$ at $t = 5\,\text{s}$ via `data.xfrc_applied`,
+ablated across conditions 1 and 4.
 
 Reported metrics per run:
 - **Final position error** $\|\mathbf{c}_\text{final}[:2] - \mathbf{c}_\text{goal}[:2]\|$ (m).
 - **Mean trajectory deviation** from the straight-line reference (m).
-- **Mean / max wall-squeeze residual** $\bar F_k - F_{wall}^*$ over time (N).
-- **Centroid estimation RMSE** $\|\hat{\mathbf{c}}_k - \mathbf{c}_k^\text{gt}\|$ (m, rad).
+- **Wall-squeeze**: per-step $\bar F_k$ and per-robot $F_{wall,i}$ time-series;
+  per-robot mean, max, and across-robot spread.
+- **Centroid estimation error** $\|\hat{\mathbf{c}}_k - \mathbf{c}_k^\text{gt}\|$ (m).
 - **FG solve time** per control step: mean, std, max (ms).
+- **Wheel torque saturation fraction** (sanity check on tuning).
 
-The H1 plot (squeeze drift under MR.CAP) and the H2 plot (estimator-error
-divergence under slip) are both **logging-only**: they can be produced from
-runs of the existing MR.CAP baseline by passing `wall_forces`/`base_forces`
-through to the recorder without modifying the controller. This gives the
-empirical anchor for the proposed contribution before the new controller is
-implemented.
+**Stressors not used.** Wheel-slip injection (per-geom friction scaling on
+one robot's wheels) was investigated and found *not* to be a meaningful
+stressor in this setup: the forklift–payload contact is the load-bearing
+constraint that holds the formation together, so a robot with slipping
+wheels simply becomes a passive ride-along dragged forward through the
+payload by the other robots. This is recorded explicitly because the
+earlier version of this problem statement listed wheel slip as the primary
+H2/H3 disturbance — corrected here.
+
+**Logging-only first pass.** Force telemetry suffices to demonstrate H1
+without modifying any controller: passing `wall_forces`/`base_forces`
+through to the recorder during MR.CAP baseline runs is enough to show the
+marginal-grip drift. The full controller is needed only to demonstrate that
+grip *can* be maintained.
 
 ## Notes on real-lab transfer
 

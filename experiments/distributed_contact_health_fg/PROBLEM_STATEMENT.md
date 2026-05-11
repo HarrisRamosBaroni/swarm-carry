@@ -27,9 +27,12 @@ information:
 1. The weighted-Procrustes anchor $\hat{\mathbf{c}}_k$, which needs
    $\{\mathbf{p}_i, w_i, \mathbf{r}_i\}_{i=1}^n$.
 2. The mean wall-squeeze residual $\bar F_k = \frac{1}{n}\sum_i F_{wall,i}$,
-   which feeds $\sigma_u^{\text{eff}}$.
-3. The per-robot post-solve corrections (recovery + position lock), which are
-   already local but read $\hat{\mathbf{c}}_k$.
+   which feeds $\sigma_u^{\text{eff}}$ (retained as a contingent safeguard
+   — see centralised doc).
+3. The per-robot post-solve corrections (bidirectional force-recovery +
+   contact-health-gated position lock), which are already local but read
+   $\hat{\mathbf{c}}_k$ for the desired-slot computation and $w_i$ (own) for
+   the pos-lock gate.
 
 The distributed controller obtains (1) and (2) over the same neighbour-only
 communication channel that DR.CAP already runs, by piggybacking compact
@@ -70,36 +73,47 @@ $\sigma_u^{\text{eff}}$ at warm-start time, then GBP runs as in DR.CAP.
 
 ## Local factor graph
 
-Identical to DR.CAP, with two replacements that mirror the centralised
-contact-health changes:
+Identical to DR.CAP, with two FG-level replacements that mirror the
+centralised contact-health changes:
 
 | Factor (DR.CAP) | Replacement here |
 |---|---|
 | Start anchor on $\mathbf{x}_0^c$ at unweighted centroid estimate | Anchor at the *force-weighted Procrustes* estimate $\hat{\mathbf{c}}_k$ computed from broadcast $(\mathbf{p}_j, \mathbf{r}_j, w_j)$ |
-| Control regulariser $\sigma_u = 0.3$ | Contact-health-modulated $\sigma_u^{\text{eff}}(\bar F_k) = \sigma_u^0 / (1 + \alpha \, h_k^+)$ from broadcast $\{F_{wall,j}\}$ |
+| Control regulariser $\sigma_u = 0.3$ | Contact-health-modulated $\sigma_u^{\text{eff}}(\bar F_k) = \sigma_u^0 / (1 + \alpha \, h_k^+)$ from broadcast $\{F_{wall,j}\}$ (contingent — see centralised doc) |
 
 All other factors (reference prior, motion model, terminal anchor, robot
 motion, pull-in, R2R distance, centroid consensus) are unchanged from
 DR.CAP. No new variables. Per-robot variable count $9N + 6$ unchanged.
 
+The two remaining contact-health channels — bidirectional per-robot
+force-recovery and contact-health-gated position-lock — live outside the
+FG as post-solve corrections, as in the centralised formulation.
+
 ## Per-robot post-solve corrections
 
-The recovery + position-lock terms are already per-robot in the centralised
-formulation and translate without modification:
+The bidirectional force-recovery and contact-health-gated position-lock
+terms are already per-robot in the centralised formulation and translate
+without modification:
 
 $$
 \mathbf{v}_i^{\text{cmd}}
 = \mathbf{v}_i^{\text{rigid}}(\mathbf{u}_i^*)
-+ \beta\,(F_{wall}^* - F_{wall,i})^+\, \hat{n}_i
-+ K_p\,\bigl(\hat{\mathbf{p}}_k + R(\hat{\theta}_k)\,\mathbf{r}_i - \mathbf{p}_i\bigr)
++ \beta\,\bigl(F_{wall}^* - F_{wall,i}\bigr)\, \hat{n}_i
++ (1 - w_i)\,K_p\,\bigl(\hat{\mathbf{p}}_k + R(\hat{\theta}_k)\,\mathbf{r}_i - \mathbf{p}_i\bigr)
 $$
 
 where $\mathbf{u}_i^*$ is robot $i$'s local centroid-control estimate (read
 from its own GBP-converged graph, exactly as DR.CAP reads its own
 $\mathbf{u}_0^{c,*}$), $\hat{\mathbf{c}}_k = (\hat{\mathbf{p}}_k, \hat{\theta}_k)$
-is robot $i$'s local weighted-Procrustes estimate, and $\hat{n}_i$ is its own
-forward axis. All inputs are local — no extra communication beyond what
-the GBP message already carries.
+is robot $i$'s local weighted-Procrustes estimate, $\hat{n}_i$ is its own
+forward axis, and $w_i$ is its own contact-health weight (computed locally
+from its own $F_{wall,i}, F_{base,i}$). All inputs are local — no extra
+communication beyond what the stats-round message already carries. The
+force-recovery sign is automatic (push in when under-pressing, back off
+when over-pressing) and the pos-lock gating $(1 - w_i)$ collapses to zero
+for healthy robots so that force is the trustworthy signal when contact
+exists, with geometry as fallback only when contact is degraded — see the
+centralised problem statement for the full rationale.
 
 ## Reduction property
 
@@ -123,11 +137,14 @@ size grows by 6 scalars per robot, independent of $n$ or $N$.
 ## Experiment
 
 Same configuration, ablation, and metrics as the centralised problem
-statement (`n \in \{3, 4\}`, surround formation, $5\,\text{m}$ transport,
-nominal vs induced-slip scenarios, four controller conditions). The
-hypotheses (H1 formation-stress regulation, H2 weighted-Procrustes
-estimation, H3 active recovery) are identical and tested on per-robot
-quantities aggregated post-hoc.
+statement: $n \in \{3, 4\}$, face-contact formation, translation goals
+(forward $5\,\text{m}$ and diagonal $(3, 2, 0)\,\text{m}$), four controller
+conditions, no orientation goals. The hypotheses (H1 grip maintenance, H2
+force-weighted centroid estimation, H3 graceful degradation under lateral
+`xfrc` disturbance) are identical and tested on per-robot quantities
+aggregated post-hoc. As in the centralised doc, **wheel-slip injection is
+explicitly not used** as a stressor (forklift contact, not wheel friction,
+holds the formation together).
 
 Additional metrics specific to this formulation:
 - **GBP iterations** per control step: mean, max (as in DR.CAP).
@@ -135,3 +152,5 @@ Additional metrics specific to this formulation:
   (max-pairwise over robots) — a sanity check that the broadcast
   sufficient statistics actually produce equivalent local estimates under
   the test topology.
+- **Communication overhead**: extra bytes per control step from the
+  one-shot stats round, relative to DR.CAP's per-iteration belief payload.
