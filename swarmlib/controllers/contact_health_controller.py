@@ -19,10 +19,15 @@ contact-health channels are layered on top, none of which expand the FG:
       ⇒ commanded velocities pulled toward zero ⇒ formation slows down,
       relieving the collective drag.
 
-  (3) Per-robot contact-recovery (post-solve correction).
-      v_i^cmd = v_i^rigid(U_k*) + β · max(F_wall* − F_wall_i, 0) · n̂_i
-      where n̂_i = [cos θ_i, sin θ_i] is robot i's forward axis. Reactive,
-      per-robot; only fires for robots whose own wall force is below target.
+  (3) Per-robot contact-pinch regulator (post-solve correction).
+      v_i^cmd = v_i^rigid(U_k*) + β · (F_wall* − F_wall_i) · n̂_i
+      where n̂_i = [cos θ_i, sin θ_i] is robot i's forward axis. A
+      bidirectional P-controller on each robot's own wall force:
+        F_i < F*  ⇒ correction +n̂_i  (push forward into payload — engage)
+        F_i > F*  ⇒ correction −n̂_i  (back away — relieve pinch)
+      Equilibrium at F_i ≈ F*. Formation-agnostic: each robot regulates
+      its own contact; asymmetric formations (e.g. n=3 with one robot in
+      the push direction) handle reaction-loading naturally.
 
 See experiments/centralised_contact_health_fg/PROBLEM_STATEMENT.md.
 """
@@ -239,17 +244,20 @@ class ContactHealthController(BaseController):
         wall_forces: np.ndarray,
     ) -> tuple:
         """
-        Per-robot inward nudge for robots under-pressing the payload.
+        Symmetric per-robot P-controller on wall force.
 
-        v_i^cmd = v_i^rigid + β · max(F_wall* − F_wall_i, 0) · [cos θ_i, sin θ_i]
+        v_i^cmd = v_i^rigid + β · (F_wall* − F_wall_i) · [cos θ_i, sin θ_i]
 
-        Returns (v_cmd_clamped, v_correction_unclamped).
+        Sign is automatic:
+          F_i < F*  ⇒ +n̂_i  (push into payload)
+          F_i > F*  ⇒ −n̂_i  (back away)
+        Equilibrium at F_i ≈ F*. Returns (v_cmd_clamped, v_correction_raw).
         """
         thetas = robot_states[:, 2].astype(float)
         F = np.asarray(wall_forces, dtype=float)
-        deficit = np.maximum(self._F_wall_star - F, 0.0)
+        error = self._F_wall_star - F                          # signed
         nhat = np.column_stack([np.cos(thetas), np.sin(thetas)])
-        v_corr = self._beta * deficit[:, None] * nhat
+        v_corr = self._beta * error[:, None] * nhat
         v_out = v_rigid + v_corr
 
         speeds = np.hypot(v_out[:, 0], v_out[:, 1])
