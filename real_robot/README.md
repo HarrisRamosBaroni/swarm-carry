@@ -161,6 +161,22 @@ Testing order: sim (`SimulatedBackend`) → sim with dropout (`AsyncSimulatedBac
 
 ---
 
+## Recording experiments
+
+`launch.sh` opens a `recorder` tmux window running `real_robot/laptop/record.py`. The recorder is idle until controlled from the **Recorder** window of `control_panel.py` (a small second matplotlib window):
+
+- **Start** — begin writing `real_robot/recordings/_active_<utc>.jsonl`. Subscribed topics: `pose`, `force`, `cmd`, `goal`, `estop`, `ctrl_stop`. Throttled per-(topic, id) at 30 Hz for pose and 50 Hz for force; everything else unthrottled.
+- **Stop** — close the file, rename to `<utc>_<name>.jsonl` (or `<utc>.jsonl` if name is empty), and write `<utc>_<name>.meta.json` with name, notes, mode, controller, and row count.
+- **Discard** — close and delete the active file.
+
+Run order is fine either way — the recorder subscribes lazily and only writes between Start/Stop. Output dir is gitignored. Run on the same laptop as `launch.sh` so all timestamps share one clock; no need for a second machine.
+
+Skip with `./launch.sh --mode ... --no-recorder`.
+
+In decentralised mode each `agent_runner` republishes its own body-frame command on its `pub_port` as a `cmd` msg right after sending `/cmd_vel` to ROS1, so the recording captures per-robot commanded velocities in both modes.
+
+---
+
 ## Load cell config path
 
 `agent_runner.py` constructs `LoadCellReader(config_path=...)` — update that path to wherever you put the calibrated `config.yaml` on the robot (default is `"config.yaml"` in the working directory).

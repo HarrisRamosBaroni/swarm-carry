@@ -24,6 +24,7 @@
 #   --gt-payload                   use live mocap payload pose (central only)
 #   --relative-goal                treat --goal as offset from initial centroid (central only)
 #   --no-control-panel             skip the control_panel window (e.g. if setting goal via CLI)
+#   --no-recorder                  skip the recorder window
 #
 # Attach: tmux attach -t swarm-laptop
 # Kill:   tmux kill-session -t swarm-laptop
@@ -45,6 +46,7 @@ N_ROBOTS=""
 GT_PAYLOAD=false
 RELATIVE_GOAL=false
 CONTROL_PANEL=true
+RECORDER=true
 CONTROLLER="mrcap"
 AGENT_EXTRA_ARGS="${AGENT_EXTRA_ARGS:-}"   # appended to central_runner args; e.g. AGENT_EXTRA_ARGS="--v-max 0.3"
 
@@ -58,6 +60,7 @@ while [[ $# -gt 0 ]]; do
     --gt-payload)        GT_PAYLOAD=true; shift ;;
     --relative-goal)     RELATIVE_GOAL=true; shift ;;
     --no-control-panel)  CONTROL_PANEL=false; shift ;;
+    --no-recorder)       RECORDER=false; shift ;;
     --controller)        CONTROLLER="$2"; shift 2 ;;
     *) echo "unknown arg: $1"; exit 1 ;;
   esac
@@ -112,6 +115,13 @@ if $CONTROL_PANEL; then
   tmux select-window -t "$TMUX_SESSION:mocap"
 fi
 
+if $RECORDER; then
+  REC_CMD="$PYTHON -m real_robot.laptop.record --config $CONFIG --mode $MODE --controller $CONTROLLER"
+  tmux new-window -t "$TMUX_SESSION" -n recorder
+  tmux send-keys -t "$TMUX_SESSION:recorder" "$REC_CMD" Enter
+  tmux select-window -t "$TMUX_SESSION:mocap"
+fi
+
 echo ""
 echo "Laptop session '$TMUX_SESSION' started (mode: $MODE, n-robots: $N_ROBOTS)."
 echo "  mocap: $MOCAP_CMD"
@@ -120,6 +130,9 @@ if [[ "$MODE" == "central" ]]; then
 fi
 if $CONTROL_PANEL; then
   echo "  control_panel: $CP_CMD"
+fi
+if $RECORDER; then
+  echo "  recorder: $REC_CMD"
 fi
 echo ""
 echo "Attach: tmux attach -t $TMUX_SESSION"

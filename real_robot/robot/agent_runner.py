@@ -20,7 +20,7 @@ import yaml
 import zmq
 import numpy as np
 
-from real_robot.transport.messages import force_msg, unpack
+from real_robot.transport.messages import force_msg, cmd_msg, unpack
 from real_robot.robot.ros1_bridge import ROS1Bridge
 from real_robot.robot.load_cell_reader import LoadCellReader
 from swarmlib.communication.zmq_backend import ZeroMQSingleAgentBackend
@@ -384,6 +384,7 @@ class AgentRunner:
                         vx_b =  c * vx_w + s * vy_w
                         vy_b = -s * vx_w + c * vy_w
                         self._ros.send_cmd(vx_b, vy_b)
+                        self._pub.send_multipart([b"cmd", cmd_msg(self._id, vx_b, vy_b)])
                     except (TimeoutError, InterruptedError) as e:
                         label = "interrupted" if isinstance(e, InterruptedError) else "timeout"
                         print(f"[agent {self._id}] GBP barrier {label} — "

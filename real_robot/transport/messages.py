@@ -67,6 +67,18 @@ def cmd_msg(robot_id: int, vx: float, vy: float, omega: float = 0.0) -> bytes:
     })
 
 
+def rec_ctrl_msg(action: str, name: str = "", notes: str = "") -> bytes:
+    """Recorder control. action ∈ {"start", "stop", "discard"}.
+    name/notes are only meaningful on "stop"."""
+    return msgpack.packb({
+        "t": "rec_ctrl",
+        "ts": time.time(),
+        "action": action,
+        "name": name,
+        "notes": notes,
+    })
+
+
 def peer_msg(from_id: int, to_id: int, epoch: int, payload: bytes) -> bytes:
     """payload is already serialised (e.g. msgpack bytes of GaussianMessage fields)."""
     return msgpack.packb({

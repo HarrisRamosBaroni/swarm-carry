@@ -36,5 +36,6 @@ experiments/centralised_contact_health_fg/*.json
 swarmlib/sensors/force/config.yaml
 real_robot/config/dev.env
 real_robot/config/network.yaml
+real_robot/recordings/
 
 **/results.json

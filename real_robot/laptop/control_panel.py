@@ -23,9 +23,11 @@ import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
-from matplotlib.widgets import Slider, Button
+from matplotlib.widgets import Slider, Button, TextBox
 
-from real_robot.transport.messages import goal_msg, estop_msg, cmd_msg, ctrl_stop_msg
+from real_robot.transport.messages import (
+    goal_msg, estop_msg, cmd_msg, ctrl_stop_msg, rec_ctrl_msg,
+)
 
 try:
     from real_robot.laptop.reset_planner import plan_reset as _plan_reset
@@ -80,6 +82,8 @@ def main():
     parser.add_argument("--config", default="real_robot/config/network.yaml")
     parser.add_argument("--n-robots", type=int, default=2)
     parser.add_argument("--goal-tol", type=float, default=0.2)
+    parser.add_argument("--planned-reset", action="store_true",
+                        help="experimental: use GBP-style trajectory planner for collision-avoiding reset")
     args = parser.parse_args()
 
     with open(args.config) as f:
@@ -113,7 +117,7 @@ def main():
     ax_sth = fig.add_axes([0.15, 0.15, 0.54, 0.025])
     ax_st  = fig.add_axes([0.15, 0.10, 0.70, 0.025])
 
-    sl_x   = Slider(ax_sx,  "Goal X (m)",    -5.0, 10.0, valinit=0.0, color="gold")
+    sl_x   = Slider(ax_sx,  "Goal X (m)",    -5.0, 10.0, valinit=-0.81, color="gold")
     sl_y   = Slider(ax_sy,  "Goal Y (m)",    -5.0,  5.0, valinit=0.0, color="gold")
     sl_th  = Slider(ax_sth, "Goal θ (rad)", -3.14,  3.14, valinit=0.0, color="gold")
     sl_tol = Slider(ax_st,  "Tolerance (m)",  0.01,  1.0, valinit=args.goal_tol, color="lightblue")
@@ -301,7 +305,7 @@ def main():
 
             # (Re)plan if interval elapsed and all poses are known
             time_since_replan = t_elapsed - _reset_state["last_replan"]
-            if _HAS_PLANNER and time_since_replan >= REPLAN_INTERVAL:
+            if args.planned_reset and _HAS_PLANNER and time_since_replan >= REPLAN_INTERVAL:
                 if not np.any(np.isnan(rp[:n])):
                     try:
                         _reset_state["plan"] = _plan_reset(rp[:n], targets)
@@ -391,6 +395,62 @@ def main():
     btn_snap.on_clicked(_take_snapshot)
     btn_reset.on_clicked(_reset_pose)
     btn_match.on_clicked(_match_theta)
+
+    # -------------------------------------------------------------------------
+    # Recording control window
+    # -------------------------------------------------------------------------
+    rec_fig = plt.figure(figsize=(6, 2.6))
+    rec_fig.canvas.manager.set_window_title("Recorder")
+    rec_state = {"recording": False}
+
+    ax_rec_name  = rec_fig.add_axes([0.25, 0.78, 0.70, 0.14])
+    ax_rec_notes = rec_fig.add_axes([0.25, 0.58, 0.70, 0.14])
+    ax_rec_start = rec_fig.add_axes([0.05, 0.30, 0.27, 0.18])
+    ax_rec_stop  = rec_fig.add_axes([0.37, 0.30, 0.27, 0.18])
+    ax_rec_disc  = rec_fig.add_axes([0.69, 0.30, 0.27, 0.18])
+    ax_rec_msg   = rec_fig.add_axes([0.05, 0.05, 0.90, 0.18]); ax_rec_msg.axis("off")
+
+    tb_name  = TextBox(ax_rec_name,  "name",  initial="")
+    tb_notes = TextBox(ax_rec_notes, "notes", initial="")
+    btn_rec_start = Button(ax_rec_start, "Start",   color="lightgreen", hovercolor="#00cc44")
+    btn_rec_stop  = Button(ax_rec_stop,  "Stop",    color="lightblue",  hovercolor="#4488cc")
+    btn_rec_disc  = Button(ax_rec_disc,  "Discard", color="lightsalmon",hovercolor="#cc4444")
+    rec_msg = ax_rec_msg.text(0.0, 0.5, "idle", fontsize=10, va="center")
+
+    def _rec_send(action, name="", notes=""):
+        pub.send_multipart([b"rec_ctrl", rec_ctrl_msg(action, name, notes)])
+
+    def _rec_start(_evt=None):
+        if rec_state["recording"]:
+            rec_msg.set_text("already recording — Stop or Discard first")
+        else:
+            _rec_send("start")
+            rec_state["recording"] = True
+            rec_msg.set_text("recording…")
+        rec_fig.canvas.draw_idle()
+
+    def _rec_stop(_evt=None):
+        if not rec_state["recording"]:
+            rec_msg.set_text("not recording")
+        else:
+            _rec_send("stop", tb_name.text, tb_notes.text)
+            rec_state["recording"] = False
+            label = tb_name.text.strip() or "<utc only>"
+            rec_msg.set_text(f"saved: {label} — clear inputs for next run")
+        rec_fig.canvas.draw_idle()
+
+    def _rec_discard(_evt=None):
+        if not rec_state["recording"]:
+            rec_msg.set_text("nothing to discard")
+        else:
+            _rec_send("discard")
+            rec_state["recording"] = False
+            rec_msg.set_text("discarded")
+        rec_fig.canvas.draw_idle()
+
+    btn_rec_start.on_clicked(_rec_start)
+    btn_rec_stop.on_clicked(_rec_stop)
+    btn_rec_disc.on_clicked(_rec_discard)
 
     # -------------------------------------------------------------------------
     # Animation loop
