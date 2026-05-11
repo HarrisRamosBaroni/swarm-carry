@@ -136,6 +136,7 @@ class AgentRunner:
         self._printed_waiting = False
         self._cmd_count = 0
         self._last_heartbeat = 0.0
+        self._last_cmd_b = (0.0, 0.0)
 
         self.controller = None
         self._controller_name = controller_name
@@ -385,6 +386,7 @@ class AgentRunner:
                         vy_b = -s * vx_w + c * vy_w
                         self._ros.send_cmd(vx_b, vy_b)
                         self._pub.send_multipart([b"cmd", cmd_msg(self._id, vx_b, vy_b)])
+                        self._last_cmd_b = (vx_b, vy_b)
                     except (TimeoutError, InterruptedError) as e:
                         label = "interrupted" if isinstance(e, InterruptedError) else "timeout"
                         print(f"[agent {self._id}] GBP barrier {label} — "
@@ -401,9 +403,10 @@ class AgentRunner:
                         self._cmd_count = 0
                     else:
                         own = self._poses.get(self._id, {})
+                        lx, ly = self._last_cmd_b
                         print(f"[agent {self._id}] heartbeat — "
                               f"pos=({own.get('x', float('nan')):.2f}, {own.get('y', float('nan')):.2f}) "
-                              f"cmd=({controls[0, 0]:.3f}, {controls[0, 1]:.3f})")
+                              f"cmd=({lx:.3f}, {ly:.3f})")
 
                 next_tick += self._dt
 
