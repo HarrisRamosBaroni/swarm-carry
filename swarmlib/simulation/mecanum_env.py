@@ -51,6 +51,7 @@ from swarmlib.simulation.generate_mecanum_scene import (
 # Summit XL Steel mecanum inverse kinematics constants
 _L = LX + LY                   # geometric factor for yaw contribution
 _WHEEL_KV = 200.0               # PD gain (Nm per rad/s error)
+_WHEEL_VEL_MAX = 20.0           # commanded wheel angular-velocity ceiling (rad/s)
 
 # Actuator order in the generated XML: fr, fl, br, bl
 _WHEEL_NAMES = [
@@ -236,19 +237,39 @@ class MecanumTransportEnv:
 
     def _apply_controls(self, controls: np.ndarray) -> None:
         """
-        Convert world-frame [vx, vy] → body-frame → mecanum IK → wheel vel targets
-        → PD torques → data.ctrl.
+        Convert world-frame [vx, vy, (ω)] → body-frame → mecanum IK → wheel vel
+        targets → PD torques → data.ctrl.
+
+        Accepts (n, 2) — translation only — or (n, 3) — translation + per-robot
+        yaw rate. With (n, 3) the world→body rotation uses the robot's *current*
+        yaw rather than the initial yaw, so heading tracking is consistent.
         """
+        has_omega = controls.shape[1] == 3
         for i in range(self.n_robots):
-            vx_w, vy_w = controls[i]
-            yaw = self._yaw0[i]
+            vx_w, vy_w = controls[i, 0], controls[i, 1]
+            omega_w = float(controls[i, 2]) if has_omega else 0.0
+
+            if has_omega:
+                qw, qx, qy, qz = self.data.xquat[self._base_ids[i]]
+                yaw = np.arctan2(2*(qw*qz + qx*qy), 1 - 2*(qy**2 + qz**2))
+            else:
+                yaw = self._yaw0[i]
 
             # World → robot body frame
             vx_b =  vx_w * np.cos(yaw) + vy_w * np.sin(yaw)
             vy_b = -vx_w * np.sin(yaw) + vy_w * np.cos(yaw)
 
             # Mecanum IK: body vel → target wheel angular velocities
-            target = _body_to_wheel(vx_b, vy_b, omega=0.0)
+            target = _body_to_wheel(vx_b, vy_b, omega=omega_w)
+
+            # Direction-preserving wheel-velocity allocator: if any wheel
+            # target overshoots _WHEEL_VEL_MAX, scale the whole (vx, vy, ω)
+            # command down so the realised motion direction in (v, ω) space
+            # matches the commanded one. Avoids the trans/spin asymmetry that
+            # independent v_max / ω_max clamps would produce.
+            peak = float(np.max(np.abs(target)))
+            if peak > _WHEEL_VEL_MAX:
+                target *= _WHEEL_VEL_MAX / peak
 
             # Current wheel velocities (from qvel)
             dof = self._wheel_jnt_dofadr[i]
@@ -335,28 +356,33 @@ class MecanumTransportEnv:
 
         Parameters
         ----------
-        controls : (n, 2) [vx, vy] in m/s, world frame, per robot.
+        controls : (n, 2) [vx, vy] or (n, 3) [vx, vy, ω] in m/s and rad/s,
+                   world frame, per robot. The yaw-rate column is optional;
+                   when omitted the env preserves the legacy translation-only
+                   behaviour.
         """
         controls = np.asarray(controls, dtype=float)
-        if controls.shape != (self.n_robots, 2):
+        if controls.shape not in ((self.n_robots, 2), (self.n_robots, 3)):
             raise ValueError(
-                f"controls must be ({self.n_robots}, 2), got {controls.shape}"
+                f"controls must be ({self.n_robots}, 2) or ({self.n_robots}, 3), "
+                f"got {controls.shape}"
             )
 
         if self._vel_feedback:
-            # Read actual world-frame velocity per robot
+            # Read actual world-frame translational velocity per robot.
+            # PI correction is applied to translation only; yaw rate (if
+            # present) passes through unmodified.
             actual_vel = np.zeros((self.n_robots, 2))
             for i, bid in enumerate(self._base_ids):
                 actual_vel[i] = self.data.cvel[bid][3:5]
 
-            # PI correction on velocity error
-            vel_error = controls - actual_vel
+            vel_error = controls[:, :2] - actual_vel
             self._vel_integral += vel_error * self._dt
             np.clip(self._vel_integral, -self._vel_fb_int_max,
                     self._vel_fb_int_max, out=self._vel_integral)
-            controls = (controls
-                        + self._vel_fb_kp * vel_error
-                        + self._vel_fb_ki * self._vel_integral)
+            controls[:, :2] = (controls[:, :2]
+                               + self._vel_fb_kp * vel_error
+                               + self._vel_fb_ki * self._vel_integral)
 
         for _ in range(self._n_substeps):
             self._apply_controls(controls)

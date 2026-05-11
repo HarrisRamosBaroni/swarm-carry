@@ -45,6 +45,11 @@ from .centroid_estimator import CentroidEstimator
 # Reusable factor error functions
 # ---------------------------------------------------------------------------
 
+def _wrap(a: np.ndarray) -> np.ndarray:
+    """Wrap angle(s) to (-π, π]."""
+    return (a + np.pi) % (2 * np.pi) - np.pi
+
+
 def _prior_error(
     measurement: np.ndarray,
     this: gtsam.CustomFactor,
@@ -130,6 +135,14 @@ class MRCapController(BaseController):
         self._sigma_mm   = float(cfg.get("sigma_mm",    1e-4))
         self._v_max      = float(cfg.get("v_max",       1.0))
         self._omega_max  = float(cfg.get("omega_max",   1.5))
+        # Per-robot heading-lock P gain. ω_i = ω_c + K · wrap(θ_i^des − θ_i^act)
+        # keeps each robot tidally locked to its formation slot when the
+        # orbital translation lags under load.
+        self._theta_kp   = float(cfg.get("theta_kp",   15.0))
+        # Per-robot position-lock P gain (translation analogue of theta_kp):
+        # v_i = v_c + ω × r_i + K · (p_i^des − p_i^act). Catches formation
+        # drift when loaded wheels undershoot their orbital target.
+        self._pos_kp     = float(cfg.get("pos_kp",      4.0))
 
         # Formation offsets r_i = [dx, dy] from centroid to robot i (world frame).
         # Rigid body: these stay constant throughout the run.
@@ -151,6 +164,10 @@ class MRCapController(BaseController):
         self._estimator = CentroidEstimator() if self._estimate_centroid else None
         self._estimator_ready = False
 
+        # Per-robot heading offset (θ_i_init − θ_centroid_init), cached on
+        # the first compute_control call after reset().
+        self._yaw_offsets: Optional[np.ndarray] = None
+
     # ------------------------------------------------------------------
     # BaseController interface
     # ------------------------------------------------------------------
@@ -160,6 +177,7 @@ class MRCapController(BaseController):
         self._total_solves = 0
         if self._estimator is not None:
             self._estimator_ready = False
+        self._yaw_offsets = None
 
     def compute_control(
         self,
@@ -178,11 +196,20 @@ class MRCapController(BaseController):
             centroid = payload_state[:3].copy()   # [x, y, theta]
         goal     = np.asarray(goal_state, dtype=float)[:3]
 
+        if self._yaw_offsets is None:
+            self._yaw_offsets = _wrap(robot_states[:, 2].astype(float)
+                                      - float(centroid[2]))
+
         t0 = time.perf_counter()
         U_c = self._solve_fg(centroid, goal, dt)
         self._set_solve_time(time.perf_counter() - t0)
 
-        return self._robot_velocities(U_c, centroid[2])
+        return self._robot_velocities(
+            U_c,
+            centroid,
+            robot_states[:, :2].astype(float),
+            robot_states[:, 2].astype(float),
+        )
 
     # ------------------------------------------------------------------
     # Factor graph solve
@@ -251,24 +278,48 @@ class MRCapController(BaseController):
     # Rigid-body velocity distribution
     # ------------------------------------------------------------------
 
-    def _robot_velocities(self, U_c: np.ndarray, theta: float) -> np.ndarray:
+    def _robot_velocities(
+        self,
+        U_c: np.ndarray,
+        centroid: np.ndarray,
+        pos_actual: np.ndarray,
+        yaw_actual: np.ndarray,
+    ) -> np.ndarray:
         """
-        Derive per-robot [vx, vy] from centroid control U_c = [vx_c, vy_c, omega_c].
+        Derive per-robot [vx, vy, ω] from centroid control U_c = [vx_c, vy_c, omega_c].
 
-        Holonomic rigid-body kinematics:
-          v_ix = vx_c - omega_c * r_iy
-          v_iy = vy_c + omega_c * r_ix
-        where r_i must be in world frame. self._r stores body-frame offsets,
-        so rotate by current payload heading theta first.
-        Then clamp individual robot speeds to v_max.
+        Open-loop rigid-body feed-forward (formation rotates rigidly with payload):
+          v_i^ff   = [vx_c - omega_c · r_iy,  vy_c + omega_c · r_ix]   (world frame)
+          ω_i^ff   = omega_c
+        with r_i = R(θ_centroid) · self._r[i].
+
+        Closed-loop tidal-lock on top, since loaded orbit lags unloaded spin
+        and loaded translation lags unloaded:
+          θ_i^des = θ + (θ_i^init − θ_centroid^init)
+          p_i^des = p_centroid + R(θ) · self._r[i]
+          ω_i     = ω_i^ff + K_θ · wrap(θ_i^des − θ_i^act)
+          v_i     = v_i^ff + K_p · (p_i^des − p_i^act)
+
+        Wheel-level saturation is handled in the env's allocator (scales the
+        whole (vx, vy, ω) vector to preserve direction). Yaw rate is clamped
+        to ±omega_max as a final safety bound.
         """
         vx_c, vy_c, omega_c = U_c
+        theta = float(centroid[2])
         c, s = np.cos(theta), np.sin(theta)
         R = np.array([[c, -s], [s, c]])
         r = self._r @ R.T                      # body-frame → world-frame, (n, 2)
-        vx = vx_c - omega_c * r[:, 1]
-        vy = vy_c + omega_c * r[:, 0]
 
-        speeds = np.hypot(vx, vy)
-        scale  = np.where(speeds > self._v_max, self._v_max / speeds, 1.0)
-        return np.column_stack([vx * scale, vy * scale])
+        vx_ff = vx_c - omega_c * r[:, 1]
+        vy_ff = vy_c + omega_c * r[:, 0]
+
+        pos_des = centroid[:2] + r              # (n, 2) world-frame slot
+        pos_err = pos_des - pos_actual
+        vx = vx_ff + self._pos_kp * pos_err[:, 0]
+        vy = vy_ff + self._pos_kp * pos_err[:, 1]
+
+        yaw_des = theta + self._yaw_offsets
+        yaw_err = _wrap(yaw_des - yaw_actual)
+        omega_i = np.clip(omega_c + self._theta_kp * yaw_err,
+                          -self._omega_max, self._omega_max)
+        return np.column_stack([vx, vy, omega_i])
