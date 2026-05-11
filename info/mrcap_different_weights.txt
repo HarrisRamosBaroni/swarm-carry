@@ -1,0 +1,43 @@
+python experiments/mrcap_fg/run_experiment.py --n-values 3 --payload-mass 0.2
+
+============================================================
+MR.CAP Factor-Graph Scaling Experiment
+  robots:       [3]
+  distance:     5.0 m
+  horizon:      15
+  v_max:        0.25 m/s
+  payload_mass: 0.2 kg
+============================================================
+
+Running n=3 ...
+  [SUCCESS]  payload=0.2 kg  final_error=0.291 m  deviation=0.001 m  solve=8.7 ± 0.7 ms  sat=62.2%  peak=1266.2 Nm  steps=377
+
+===========================================================================
+   n    status  final_err(m)  deviation(m)  solve_mean(ms)    sat%   peak(Nm)
+----  --------  ------------  ------------  --------------  ------  ---------
+   3        OK         0.291         0.001            8.75    62.2    1266.21
+============================================================
+
+Results saved to /home/harris/Documents/y3/dot/swarm-carry/experiments/mrcap_fg/results.json
+
+python experiments/mrcap_fg/run_experiment.py --n-values 3 --payload-mass 50.0
+
+============================================================
+MR.CAP Factor-Graph Scaling Experiment
+  robots:       [3]
+  distance:     5.0 m
+  horizon:      15
+  v_max:        0.25 m/s
+  payload_mass: 50.0 kg
+============================================================
+
+Running n=3 ...
+  [SUCCESS]  payload=50.0 kg  final_error=0.293 m  deviation=0.002 m  solve=8.9 ± 0.8 ms  sat=67.6%  peak=1281.5 Nm  steps=377
+
+===========================================================================
+   n    status  final_err(m)  deviation(m)  solve_mean(ms)    sat%   peak(Nm)
+----  --------  ------------  ------------  --------------  ------  ---------
+   3        OK         0.293         0.002            8.87    67.6    1281.50
+============================================================
+
+Results saved to /home/harris/Documents/y3/dot/swarm-carry/experiments/mrcap_fg/results.json

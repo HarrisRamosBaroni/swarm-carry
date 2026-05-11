@@ -16,7 +16,7 @@ coordinate to move the payload without dropping it or colliding with obstacles.
 
 ## Physical setup
 
-**Robots:** Mecanum-wheeled mobile robots (holonomic). Exact platform TBD.
+**Robots:** Mecanum-wheeled mobile robots (holonomic). ~~Exact platform TBD.~~ myAGV (pre 2023).
 Holonomic drive means each robot can move in any direction independently,
 which matters for maintaining formation while navigating around obstacles.
 
@@ -33,8 +33,9 @@ the fork bases and laterally constrained by the fork walls.
 - ~~Shear force sensors on the top surface of each robot (robot-payload contact)~~
 - Force sensor on the fork base bottom plane (vertical load — weight bearing)
 - Force sensor on the fork wall vertical plane (horizontal force into the robot)
-- Robot positions assumed known throughout (e.g. from onboard odometry or
-  external localisation). This assumption may be revisited.
+- Robot positions assumed known throughout (~~e.g. from onboard odometry or~~ from
+  external localisation). ~~This assumption may be revisited.~~
+- Payload position assumed known throughout.
 
 **Initial conditions:** Initial robot formation and payload pose assumed known.
 
@@ -52,30 +53,12 @@ preliminary results. It is not representative of the real scenario above.
 
 ## Open questions / things subject to change
 
-- Exact robot platform (currently modelled as Summit XL Steel in the mecanum
-  demo, but not finalised)
-- Whether robot positions remain fully known throughout, or whether
-  localisation uncertainty needs to be modelled
-- Obstacle representation (static only, or dynamic)
-- Payload shape and mass distribution
-- Whether formation is fixed or allowed to reconfigure en route
-- Sensor noise models for shear sensors
-- Whether inter-robot communication is assumed reliable or subject to dropout
-
----
-
-## Implications for simulation infrastructure
-
-The current `SwarmTransportEnv` (`swarmlib/simulation/env.py`) does not
-support this scenario — it assumes TurtleBot3 diff-drive robots pushing from
-the side. When implementing the real scenario, the simulation layer will need:
-
-- A mecanum kinematic model (4 wheel velocities, holonomic)
-- Payload-on-top contact geometry in the MuJoCo scene
-- Shear force readout from robot-top contact surfaces
-- Obstacle bodies in the scene with corresponding state observations
-- Robot body/actuator names decoupled from the env (currently hardcoded)
-
-The recommended path is to write a new env (or subclass the existing one) once
-the real scene XML and sensor requirements are settled, rather than adapting
-the current env prematurely.
+- ~~Exact robot platform (currently modelled as Summit XL Steel in the mecanum
+  demo, but not finalised)~~ myAGV pre 2023
+- ~~Whether robot positions remain fully known throughout, or whether
+  localisation uncertainty needs to be modelled~~ robot positions known.
+- ~~Obstacle representation (static only, or dynamic)~~ static or none
+- ~~Payload shape and mass distribution~~ cuboidal, roughly uniform
+- ~~Whether formation is fixed or allowed to reconfigure en route~~ fixed target formation
+- ~~Sensor noise models for shear sensors~~ not applicable
+- ~~Whether inter-robot communication is assumed reliable or subject to dropout~~ this is a robustness test
