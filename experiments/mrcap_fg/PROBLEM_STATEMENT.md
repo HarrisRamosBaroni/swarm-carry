@@ -24,6 +24,16 @@ controller (not perfect), and payload reaction forces can cause per-robot veloci
 that the controller never observes. In practice the rigid-body assumption holds well
 enough under the carriage coupling, but deviations are possible under large disturbances.
 
+**Orientation goals are out of scope.** The factor graph admits a $\theta$ goal
+trivially, but executing it requires per-robot yaw commands (spin) on top of the
+orbital translation $\boldsymbol\omega \times \mathbf{r}_i$. Orbital translation
+is *loaded* (wheels push the payload tangentially); own-axis spin is *unloaded*.
+Under wheel-PD tracking, the unloaded spin runs ahead of the loaded orbit, the
+fork swings off the payload face, and the grip slips — even with closed-loop
+position/heading P loops the tuning is fragile. The original MR.CAP paper hides
+this by rigidly bolting robots to the payload; the forklift contact does not. All
+goals here are therefore $(x, y)$ only and per-robot commands carry no yaw rate.
+
 ## Motion Model
 
 Centroid dynamics are integrated with a world-frame Euler step (exact for holonomic drive):

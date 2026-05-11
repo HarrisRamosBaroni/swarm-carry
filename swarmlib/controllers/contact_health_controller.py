@@ -108,11 +108,18 @@ class ContactHealthController(BaseController):
         self._alpha       = float(cfg.get("alpha_sigma_u", 0.1))
         self._beta        = float(cfg.get("beta_recovery", 0.005))
         self._weight_eps  = float(cfg.get("weight_eps",    1e-3))
+        # Per-robot position-lock P gain (kinematic counterpart to β):
+        # v_i = v_i^rigid + K_p · (p_i^des − p_i^act), where p_i^des is the
+        # robot's nominal slot in the *estimated* centroid frame. Pulls a
+        # slipping bot back into formation geometrically; complements the
+        # force-based wall recovery, which reattaches it physically.
+        self._pos_kp      = float(cfg.get("pos_kp",        2.0))
 
         # Ablation switches
         self._use_weighted  = bool(cfg.get("use_weighted_anchor",    True))
         self._use_modulated = bool(cfg.get("use_modulated_sigma_u",  True))
         self._use_recovery  = bool(cfg.get("use_recovery_term",      True))
+        self._use_pos_lock  = bool(cfg.get("use_pos_lock",           True))
 
         # Formation offsets (body frame)
         if formation is not None:
@@ -197,8 +204,10 @@ class ContactHealthController(BaseController):
         U_c = self._solve_fg(centroid, goal, dt, sigma_u_eff)
         self._set_solve_time(time.perf_counter() - t0)
 
-        # ---- Rigid-body distribution + recovery ----
+        # ---- Rigid-body distribution + position lock + recovery ----
         v_rigid = self._robot_velocities(U_c, centroid[2])
+        if self._use_pos_lock:
+            v_rigid = self._apply_pos_lock(v_rigid, centroid, robot_states)
         if self._use_recovery and wall_forces is not None:
             v_out, v_corr = self._apply_recovery(v_rigid, robot_states, wall_forces)
             self._last_v_recovery = v_corr
@@ -236,6 +245,34 @@ class ContactHealthController(BaseController):
         self._last_F_bar = F_bar
         excess = max(F_bar - self._F_wall_star, 0.0)
         return self._sigma_u0 / (1.0 + self._alpha * excess)
+
+    def _apply_pos_lock(
+        self,
+        v_rigid: np.ndarray,
+        centroid: np.ndarray,
+        robot_states: np.ndarray,
+    ) -> np.ndarray:
+        """
+        Per-robot position-lock P controller in the *estimated* centroid frame.
+
+          p_i^des = p_centroid + R(θ_centroid) · self._r[i]
+          v_i     = v_i^rigid + K_p · (p_i^des − p_i^act)
+
+        Open-loop v_i^rigid alone has no term that resists slip-induced
+        formation drift; this loop closes that gap purely from robot poses
+        and the estimator's centroid output (no GT payload required).
+        Translation magnitude is clamped to v_max afterwards.
+        """
+        theta = float(centroid[2])
+        c, s = np.cos(theta), np.sin(theta)
+        R = np.array([[c, -s], [s, c]])
+        pos_des = centroid[:2] + self._r @ R.T              # (n, 2) world frame
+        pos_err = pos_des - robot_states[:, :2].astype(float)
+        v_out   = v_rigid + self._pos_kp * pos_err
+
+        speeds = np.hypot(v_out[:, 0], v_out[:, 1])
+        scale  = np.where(speeds > self._v_max, self._v_max / speeds, 1.0)
+        return v_out * scale[:, None]
 
     def _apply_recovery(
         self,

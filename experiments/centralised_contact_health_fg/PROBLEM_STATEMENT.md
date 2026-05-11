@@ -223,6 +223,48 @@ around the rigid-body assumption:
 | Pose-degraded contact | $w_i \ll 1$ on one or more robots | Weighted anchor de-trusts the affected robot's pose |
 | Marginal squeeze | $F_{wall,i} < F_{wall}^*$ on one or more robots | Per-robot $\hat{n}_i$ correction nudges the robot inward |
 
+### Per-robot position lock (kinematic counterpart to recovery)
+
+The wall-force recovery above reattaches a slipping robot *physically* but
+gives no geometric anchor: the robot may re-engage at a position that is
+not its formation slot. We add a small per-robot P loop on position error
+in the *estimated* centroid frame:
+$$
+\mathbf{p}_i^\text{des} = \hat{\mathbf{p}}_k + R(\hat{\theta}_k)\,\mathbf{r}_i,
+\qquad
+\mathbf{v}_i^\text{cmd} \mathrel{+}= K_p\,\bigl(\mathbf{p}_i^\text{des} - \mathbf{p}_i\bigr)
+$$
+with default $K_p = 2.0$. No new GT dependency — the desired slot is
+defined entirely by the weighted-Procrustes output $\hat{\mathbf{c}}_k$
+and the (assumed-known) robot poses.
+
+**Self-consistency property.** Because the centroid estimate is itself
+weighted by contact health, well-gripped robots dominate the consensus
+frame; a slipping robot — already down-weighted in $\hat{\mathbf{c}}_k$ —
+is then commanded back to its slot in the frame the *other* robots
+collectively define. The kinematic loop and the estimator close around
+each other: bots that maintain grip define "where the formation is";
+bots that lose grip are pulled toward where they should be in that
+shared frame. This is the kinematic analogue of $\beta$ — recovery in
+the position domain rather than the wall-force domain — and it is
+something MR.CAP cannot do, because its open-loop $\mathbf{u}_k \to
+\mathbf{v}_i^{\text{rigid}}$ map has no per-robot position feedback term.
+
+### Orientation goals — out of scope
+
+Both this controller and MR.CAP currently target $(x, y)$ goals only. The
+factor graph admits a $\theta$ goal trivially, but the *physical* execution
+runs into a load-asymmetry failure mode: orbital translation
+($\mathbf{v} = \boldsymbol\omega \times \mathbf{r}_i$) is loaded by the
+payload reaction, while own-axis spin is unloaded, so per-robot wheel-PD
+tracking of the two diverges and the fork loses tidal lock with the
+payload face. Rigid attachment (as in the original MR.CAP paper) hides
+this by mechanical constraint; the forklift contact does not. Closing it
+requires a heading-lock loop analogous to $K_p$ above and careful
+wheel-allocator coupling — left as future work. Until then, all
+$\omega$-goal terms are dropped from the reference and per-robot commands
+contain no yaw rate.
+
 ### Total cost
 
 $$

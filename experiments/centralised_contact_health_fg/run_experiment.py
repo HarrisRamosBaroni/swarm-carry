@@ -90,7 +90,7 @@ def make_controller(ablation: str, n_robots: int, formation, horizon: int,
 
 def run_single(
     n_robots: int,
-    distance: float,
+    goal: tuple,
     max_time: float,
     success_threshold: float,
     horizon: int,
@@ -107,7 +107,6 @@ def run_single(
     visualise: bool = False,
     sim_speed: float = 1.0,
 ) -> dict:
-    goal = (distance, 0.0, 0.0)
     payload_size = (PAYLOAD_HX, PAYLOAD_HY, PAYLOAD_HZ)
     formation = face_contact_formation(n_robots,
                                        payload_hx=PAYLOAD_HX,
@@ -331,7 +330,11 @@ def main():
     parser.add_argument("--n-values", default="3",
                         help="Comma-separated robot counts (default: 3)")
     parser.add_argument("--distance", type=float, default=5.0,
-                        help="Transport distance m (default: 5.0)")
+                        help="Transport distance along +x m (default: 5.0). "
+                             "Ignored if --goal is given.")
+    parser.add_argument("--goal", default=None,
+                        help="Goal pose as 'x,y,theta' (m,m,rad). "
+                             "Overrides --distance.")
     parser.add_argument("--max-time", type=float, default=60.0,
                         help="Max sim time per run s (default: 60)")
     parser.add_argument("--horizon",  type=int,   default=15)
@@ -359,11 +362,19 @@ def main():
 
     n_values = [int(x.strip()) for x in args.n_values.split(",")]
 
+    if args.goal is not None:
+        parts = [float(x.strip()) for x in args.goal.split(",")]
+        if len(parts) != 3:
+            raise SystemExit("--goal must be 'x,y,theta' (3 floats)")
+        goal_tuple = tuple(parts)
+    else:
+        goal_tuple = (args.distance, 0.0, 0.0)
+
     print(f"\n{'='*60}")
     print(f"Contact-Health FG Ablation Experiment")
     print(f"  ablation:     {args.ablation}")
     print(f"  robots:       {n_values}")
-    print(f"  distance:     {args.distance} m")
+    print(f"  goal (x,y,θ): ({goal_tuple[0]:.3f}, {goal_tuple[1]:.3f}, {goal_tuple[2]:.3f})")
     print(f"  F_wall*:      {args.F_wall_star} N")
     print(f"  α, β:         {args.alpha}, {args.beta}")
     print(f"  slip_robot:   {args.slip_robot}"
@@ -377,7 +388,7 @@ def main():
         print(f"Running n={n} ablation={args.ablation} ...", flush=True)
         result = run_single(
             n_robots=n,
-            distance=args.distance,
+            goal=goal_tuple,
             max_time=args.max_time,
             success_threshold=args.threshold,
             horizon=args.horizon,
