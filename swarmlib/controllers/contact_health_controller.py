@@ -113,7 +113,7 @@ class ContactHealthController(BaseController):
         # robot's nominal slot in the *estimated* centroid frame. Pulls a
         # slipping bot back into formation geometrically; complements the
         # force-based wall recovery, which reattaches it physically.
-        self._pos_kp      = float(cfg.get("pos_kp",        2.0))
+        self._pos_kp      = float(cfg.get("pos_kp",        0.0))
 
         # Ablation switches
         self._use_weighted  = bool(cfg.get("use_weighted_anchor",    True))
@@ -207,7 +207,8 @@ class ContactHealthController(BaseController):
         # ---- Rigid-body distribution + position lock + recovery ----
         v_rigid = self._robot_velocities(U_c, centroid[2])
         if self._use_pos_lock:
-            v_rigid = self._apply_pos_lock(v_rigid, centroid, robot_states)
+            v_rigid = self._apply_pos_lock(v_rigid, centroid, robot_states,
+                                           weights=weights)
         if self._use_recovery and wall_forces is not None:
             v_out, v_corr = self._apply_recovery(v_rigid, robot_states, wall_forces)
             self._last_v_recovery = v_corr
@@ -251,24 +252,40 @@ class ContactHealthController(BaseController):
         v_rigid: np.ndarray,
         centroid: np.ndarray,
         robot_states: np.ndarray,
+        weights: Optional[np.ndarray] = None,
     ) -> np.ndarray:
         """
-        Per-robot position-lock P controller in the *estimated* centroid frame.
+        Contact-health-gated per-robot position-lock P controller in the
+        *estimated* centroid frame.
 
           p_i^des = p_centroid + R(θ_centroid) · self._r[i]
-          v_i     = v_i^rigid + K_p · (p_i^des − p_i^act)
+          v_i     = v_i^rigid + (1 − w_i) · K_p · (p_i^des − p_i^act)
 
-        Open-loop v_i^rigid alone has no term that resists slip-induced
-        formation drift; this loop closes that gap purely from robot poses
-        and the estimator's centroid output (no GT payload required).
-        Translation magnitude is clamped to v_max afterwards.
+        Where w_i ∈ [ε, 1] is the contact-health weight (same one used by
+        the weighted Procrustes anchor). Rationale:
+          - Healthy robot (w_i ≈ 1): gate ≈ 0 → no pos-lock; force-recovery
+            alone drives the robot to its physical force equilibrium, which
+            may differ slightly from the geometric slot.
+          - Lost-contact robot (w_i ≈ ε): gate ≈ 1 → pos-lock snaps the
+            robot back toward its slot until it re-engages, after which the
+            weight rises and pos-lock fades.
+        Force is the trustworthy signal when contact exists; geometry is the
+        fallback when force is uninformative.
+
+        With weights=None (no force info), the gate is uniformly 1 and this
+        reduces to the original ungated pos-lock.
         """
         theta = float(centroid[2])
         c, s = np.cos(theta), np.sin(theta)
         R = np.array([[c, -s], [s, c]])
         pos_des = centroid[:2] + self._r @ R.T              # (n, 2) world frame
         pos_err = pos_des - robot_states[:, :2].astype(float)
-        v_out   = v_rigid + self._pos_kp * pos_err
+
+        if weights is None:
+            gate = np.ones(self.num_robots)
+        else:
+            gate = 1.0 - np.asarray(weights, dtype=float)
+        v_out = v_rigid + (gate[:, None] * self._pos_kp) * pos_err
 
         speeds = np.hypot(v_out[:, 0], v_out[:, 1])
         scale  = np.where(speeds > self._v_max, self._v_max / speeds, 1.0)
