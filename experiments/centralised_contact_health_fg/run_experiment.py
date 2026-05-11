@@ -31,7 +31,12 @@ import numpy as np
 
 from swarmlib.simulation.mecanum_env import MecanumTransportEnv
 from swarmlib.simulation.generate_mecanum_scene import face_contact_formation
-from swarmlib.controllers import MRCapController, ContactHealthController
+from swarmlib.controllers import (
+    MRCapController,
+    ContactHealthController,
+    ContactHealthDistributedController,
+    DRCapController,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -54,8 +59,22 @@ ABLATION_FLAGS = {
 
 def make_controller(ablation: str, n_robots: int, formation, horizon: int,
                     v_max: float, payload_mass_nom: float,
-                    F_wall_star: float, alpha: float, beta: float):
+                    F_wall_star: float, alpha: float, beta: float,
+                    controller_kind: str = "centralised",
+                    gbp_max_iters: int = 30, gbp_tol: float = 1e-3):
     if ablation == "baseline":
+        # Baseline = open-loop (no contact-health). Centralised: MR.CAP.
+        # Distributed: DR.CAP centralised stand-in (same factor structure as
+        # the distributed CH controller minus the contact-health channels).
+        if controller_kind == "distributed":
+            return DRCapController(
+                num_robots=n_robots,
+                formation=formation,
+                config={
+                    "horizon": horizon, "v_max": v_max,
+                    "sigma_x": 0.5, "sigma_u": 0.3, "sigma_anchor": 0.01,
+                },
+            )
         return MRCapController(
             num_robots=n_robots,
             formation=formation,
@@ -67,20 +86,25 @@ def make_controller(ablation: str, n_robots: int, formation, horizon: int,
         )
 
     flags = ABLATION_FLAGS[ablation]
+    cfg = {
+        "horizon":  horizon, "v_max": v_max,
+        "sigma_x":  0.5, "sigma_u": 0.3, "sigma_anchor": 0.01,
+        "F_wall_star":      F_wall_star,
+        "payload_mass_nom": payload_mass_nom,
+        "alpha_sigma_u":    alpha,
+        "beta_recovery":    beta,
+        "use_weighted_anchor":    flags[0],
+        "use_modulated_sigma_u":  flags[1],
+        "use_recovery_term":      flags[2],
+    }
+    if controller_kind == "distributed":
+        cfg["gbp_max_iters"] = gbp_max_iters
+        cfg["gbp_tol"]       = gbp_tol
+        return ContactHealthDistributedController(
+            num_robots=n_robots, formation=formation, config=cfg,
+        )
     return ContactHealthController(
-        num_robots=n_robots,
-        formation=formation,
-        config={
-            "horizon":  horizon, "v_max": v_max,
-            "sigma_x":  0.5, "sigma_u": 0.3, "sigma_anchor": 0.01,
-            "F_wall_star":      F_wall_star,
-            "payload_mass_nom": payload_mass_nom,
-            "alpha_sigma_u":    alpha,
-            "beta_recovery":    beta,
-            "use_weighted_anchor":    flags[0],
-            "use_modulated_sigma_u":  flags[1],
-            "use_recovery_term":      flags[2],
-        },
+        num_robots=n_robots, formation=formation, config=cfg,
     )
 
 
@@ -106,6 +130,9 @@ def run_single(
     slip_friction_scale: float,
     visualise: bool = False,
     sim_speed: float = 1.0,
+    controller_kind: str = "centralised",
+    gbp_max_iters: int = 30,
+    gbp_tol: float = 1e-3,
 ) -> dict:
     payload_size = (PAYLOAD_HX, PAYLOAD_HY, PAYLOAD_HZ)
     formation = face_contact_formation(n_robots,
@@ -129,6 +156,8 @@ def run_single(
         horizon=horizon, v_max=v_max,
         payload_mass_nom=payload_mass,
         F_wall_star=F_wall_star, alpha=alpha, beta=beta,
+        controller_kind=controller_kind,
+        gbp_max_iters=gbp_max_iters, gbp_tol=gbp_tol,
     )
 
     obs = env.reset()
@@ -166,6 +195,7 @@ def run_single(
     F_bar_log = []
     sigma_u_log = []
     v_recovery_log = []
+    gbp_iters_log = []
     torque_log = []
 
     TORQUE_LIMIT = 10.0
@@ -202,9 +232,10 @@ def run_single(
         base_forces_log.append(
             None if base_forces is None else np.asarray(base_forces).tolist())
 
-        # Controller call. MR.CAP takes `forces` (treated as wall_forces);
-        # ContactHealthController takes both kwargs.
-        if isinstance(controller, ContactHealthController):
+        # Controller call. MR.CAP / DR.CAP take `forces` (treated as
+        # wall_forces); the contact-health controllers take both kwargs.
+        if isinstance(controller, (ContactHealthController,
+                                   ContactHealthDistributedController)):
             controls = controller.compute_control(
                 payload_state=payload, robot_states=robots,
                 goal_state=goal_arr, dt=0.05,
@@ -212,13 +243,16 @@ def run_single(
             )
             diag = controller.get_diagnostics()
             weights_log.append(None if diag["weights"] is None
-                               else diag["weights"].tolist())
+                               else np.asarray(diag["weights"]).tolist())
             F_bar_log.append(diag["F_bar"])
             sigma_u_log.append(diag["sigma_u_eff"])
-            v_recovery_log.append(None if diag["v_recovery"] is None
-                                  else diag["v_recovery"].tolist())
+            # Distributed controller doesn't expose v_recovery (it's per-
+            # robot and applied locally without aggregation).
+            v_corr = diag.get("v_recovery")
+            v_recovery_log.append(None if v_corr is None
+                                  else np.asarray(v_corr).tolist())
             centroid_estimate_log.append(None if diag["centroid"] is None
-                                         else diag["centroid"].tolist())
+                                         else np.asarray(diag["centroid"]).tolist())
         else:
             controls = controller.compute_control(
                 payload_state=payload, robot_states=robots,
@@ -232,6 +266,10 @@ def run_single(
             centroid_estimate_log.append(None)
 
         solve_times.append(controller.get_solve_time())
+        if isinstance(controller, ContactHealthDistributedController):
+            gbp_iters_log.append(controller.get_gbp_iters())
+        else:
+            gbp_iters_log.append(None)
 
         obs = env.step(controls)
 
@@ -286,6 +324,7 @@ def run_single(
 
     return {
         "n_robots":           n_robots,
+        "controller_kind":    controller_kind,
         "ablation":           ablation,
         "success":            success,
         "sim_time":           float(env.time),
@@ -317,6 +356,7 @@ def run_single(
         "F_bar":                F_bar_log,
         "sigma_u_eff":          sigma_u_log,
         "v_recovery":           v_recovery_log,
+        "gbp_iters":            gbp_iters_log,
         "torques_Nm":           torques.tolist(),
     }
 
@@ -327,6 +367,16 @@ def main():
     parser.add_argument("--ablation", default="full",
                         choices=list(ABLATION_FLAGS.keys()),
                         help="Ablation condition (default: full)")
+    parser.add_argument("--controller", default="centralised",
+                        choices=["centralised", "distributed"],
+                        help="Controller flavour (default: centralised). "
+                             "'distributed' uses ContactHealthDistributedController "
+                             "with GBP over a SimulatedBackend (full topology); "
+                             "baseline ablation uses DR.CAP centralised in this mode.")
+    parser.add_argument("--gbp-max-iters", type=int, default=30,
+                        help="Distributed only: max GBP iters/step (default: 30)")
+    parser.add_argument("--gbp-tol", type=float, default=1e-3,
+                        help="Distributed only: GBP convergence tol (default: 1e-3)")
     parser.add_argument("--n-values", default="3",
                         help="Comma-separated robot counts (default: 3)")
     parser.add_argument("--distance", type=float, default=5.0,
@@ -341,8 +391,8 @@ def main():
     parser.add_argument("--v-max",    type=float, default=0.25)
     parser.add_argument("--payload-mass", type=float, default=2.0)
     parser.add_argument("--threshold",    type=float, default=0.3)
-    parser.add_argument("--F-wall-star",  type=float, default=5.0,
-                        help="Target wall-squeeze N (default: 5.0)")
+    parser.add_argument("--F-wall-star",  type=float, default=10.0,
+                        help="Target wall-squeeze N (default: 10.0)")
     parser.add_argument("--alpha",        type=float, default=0.1,
                         help="σ_u modulation gain 1/N (default: 0.1)")
     parser.add_argument("--beta",         type=float, default=0.005,
@@ -372,6 +422,7 @@ def main():
 
     print(f"\n{'='*60}")
     print(f"Contact-Health FG Ablation Experiment")
+    print(f"  controller:   {args.controller}")
     print(f"  ablation:     {args.ablation}")
     print(f"  robots:       {n_values}")
     print(f"  goal (x,y,θ): ({goal_tuple[0]:.3f}, {goal_tuple[1]:.3f}, {goal_tuple[2]:.3f})")
@@ -404,6 +455,9 @@ def main():
             slip_friction_scale=args.slip_friction_scale,
             visualise=args.vis and idx == 0,
             sim_speed=args.sim_speed,
+            controller_kind=args.controller,
+            gbp_max_iters=args.gbp_max_iters,
+            gbp_tol=args.gbp_tol,
         )
         all_results.append(result)
 
