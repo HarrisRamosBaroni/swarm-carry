@@ -308,10 +308,16 @@ class CentralRunner:
                                 formation=formation,
                                 config=self._controller_cfg,
                             )
+                        # Orientation is out of scope for this project — pin the
+                        # goal heading to the current payload heading so the
+                        # controller never plans a rotation. Avoids angle-wrap
+                        # blow-ups when payload θ and slider θ straddle ±π.
+                        goal_state = self._goal.copy()
+                        goal_state[2] = float(payload_state[2])
                         controls = self._invoke_controller(
                             payload_state=payload_state,
                             robot_states=self._robot_states,
-                            goal_state=self._goal,
+                            goal_state=goal_state,
                             dt=self._dt,
                         )
                         for i in range(self._n):

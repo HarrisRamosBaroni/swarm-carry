@@ -372,11 +372,15 @@ class AgentRunner:
                         continue
 
                     robot_states = np.array([[own["x"], own["y"], own["theta"], vx, vy]])
+                    # Orientation is out of scope — pin goal heading to current
+                    # payload heading so the controller never plans a rotation.
+                    goal_state = self._goal.copy()
+                    goal_state[2] = float(self._payload_state[2])
                     try:
                         controls = self._invoke_controller(
                             payload_state=self._payload_state,
                             robot_states=robot_states,
-                            goal_state=self._goal,
+                            goal_state=goal_state,
                             dt=self._dt,
                         )
                         theta = own["theta"]
