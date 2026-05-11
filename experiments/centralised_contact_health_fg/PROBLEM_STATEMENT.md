@@ -166,9 +166,11 @@ $\sigma_u^{\text{eff}}$ tightens the regulariser, pulling commanded velocities
 back toward zero and relieving the stress.
 
 The factor is **asymmetric** — it only activates for $\bar F_k > F_{wall}^*$.
-Below-target squeeze indicates marginal contact, which slowing down cannot
-fix; that failure mode (contact loss / recovery) is out of scope for this
-formulation and is deferred to future work (H3b in the design notes).
+Below-target squeeze cannot be fixed by slowing the formation down; it
+requires *per-robot inward motion*, which is structurally outside MR.CAP's
+variable set (robot velocities are a deterministic function of the centroid
+control $\mathbf{u}_k$). The complementary action is handled outside the
+factor graph by the per-robot contact-recovery term defined below.
 
 The factor cost is:
 $$
@@ -177,6 +179,49 @@ $$
 Note that $\sigma_u^{\text{eff}}$ depends only on the *current* measurement
 $\bar F_k$ and is held constant across the horizon — there is no force
 prediction. This preserves linearity of the factor in $\mathbf{u}_j$.
+
+### Per-robot contact-recovery (post-solve correction)
+
+The two FG-level changes above address *excess* squeeze (collective
+slowdown via the regulariser) and *degraded-but-unknown* contact (down-
+weighted poses in the anchor). Neither restores marginal contact —
+that requires individual robots to move inward toward the payload, which
+the rigid-body kinematic map $\mathbf{u}_k \to \mathbf{v}_i^{\text{rigid}}$
+cannot express because all per-robot velocities are tied to a single
+centroid control.
+
+Rather than expanding the FG variable set to per-robot decisions (which is
+the direction `experiments/centralised_force_fg_cvel/` takes, with substantial
+implementation cost), we add a small **post-solve per-robot correction**:
+$$
+\mathbf{v}_i^{\text{cmd}}
+= \mathbf{v}_i^{\text{rigid}}(\mathbf{u}_k^*)
++ \beta \, \bigl(F_{wall}^* - F_{wall,i}\bigr)^+ \, \hat{n}_i
+$$
+where $\hat{n}_i = [\cos\theta_i, \sin\theta_i]^\top$ is robot $i$'s forward
+axis in the world frame (the direction that drives the fork wall *into* the
+payload), $(\cdot)^+ = \max(\cdot, 0)$, and $\beta$ is a small gain (default
+$\beta = 0.005\,\text{m s}^{-1} \text{N}^{-1}$, i.e. a $20\,\text{N}$
+under-squeeze produces a $0.1\,\text{m/s}$ inward correction).
+
+This term is per-robot and reactive — it acts only on robots whose own
+$F_{wall,i}$ has fallen below target. It violates the rigid-body kinematic
+invariant by $O(\beta \Delta t)$ per step, which is intentional: the
+formation is allowed to self-correct against the open-loop drift that MR.CAP
+ignores. The resulting non-nominal poses are absorbed by the weighted-
+Procrustes anchor in the next step (a robot mid-recovery has $F_{wall,i} <
+F_{wall}^*$ and so its pose is down-weighted in the centroid estimate
+until it re-engages).
+
+**Symmetry.** The three changes together form a symmetric closed loop
+around the rigid-body assumption:
+
+| Regime | Signal | Response |
+|--------|--------|----------|
+| All healthy | $w_i \approx 1$, $\bar F_k \approx F_{wall}^*$ | Reduces exactly to MR.CAP |
+| Excess squeeze | $\bar F_k > F_{wall}^*$ | Regulariser shrinks $\sigma_u^{\text{eff}}$ → collective slowdown |
+| Pose-degraded contact | $w_i \ll 1$ on one or more robots | Weighted anchor de-trusts the affected robot's pose |
+| Marginal squeeze | $F_{wall,i} < F_{wall}^*$ on one or more robots | Per-robot $\hat{n}_i$ correction nudges the robot inward |
 
 ### Total cost
 
@@ -196,9 +241,12 @@ of the current sensor reading $(\{F_{wall,i}\}, \{F_{base,i}\})$ but constants
 within a single solve. The graph is therefore still a linear least-squares
 problem and LM converges in one iteration.
 
-Only $\mathbf{u}_0^*$ is applied; the rest is discarded; the graph is rebuilt
-next step from a fresh $(\hat{\mathbf{c}}_k, \bar F_k)$ — standard
-receding-horizon MPC, identical to MR.CAP.
+Only $\mathbf{u}_0^*$ is extracted from the solve, mapped through the
+rigid-body kinematic to per-robot $\mathbf{v}_i^{\text{rigid}}$, augmented
+with the per-robot contact-recovery correction above, and applied; the rest
+of the horizon is discarded; the graph is rebuilt next step from a fresh
+$(\hat{\mathbf{c}}_k, \bar F_k)$ — standard receding-horizon MPC,
+identical in structure to MR.CAP.
 
 ## Scalability
 
@@ -232,10 +280,14 @@ $t \geq t_\text{slip}$; comparison between weighted and unweighted estimators
 *on the same trajectory* (no controller change), then end-to-end with the
 contact-health controller closing the loop.
 
-**H3 (graceful degradation, secondary).** With H1 and H2 in place, the
-contact-health controller completes the $5\,\text{m}$ transport with lower
-final position error than the MR.CAP baseline under the induced-slip
-disturbance, despite using a degraded centroid estimate.
+**H3 (active contact recovery, secondary).** Under induced contact
+degradation, the post-solve per-robot recovery term restores $F_{wall,i}$
+toward $F_{wall}^*$ on the affected robot (re-engagement) without requiring
+formation reconfiguration through the FG. With all three changes active,
+the contact-health controller completes the $5\,\text{m}$ transport with
+lower final position error than the MR.CAP baseline under the induced-slip
+disturbance, despite using a degraded centroid estimate during the recovery
+window.
 
 *Metric:* $\|\mathbf{c}_\text{final}[:2] - \mathbf{c}_\text{goal}[:2]\|$.
 
@@ -246,10 +298,13 @@ ring around the payload, forklifts engaged) is used with `MecanumTransportEnv`
 (myAGV-class kinematics, MuJoCo physics, force sensors active). The payload
 is transported $5\,\text{m}$ along the $x$-axis from rest.
 
-Three controller conditions per run:
+Four controller conditions per run, forming an ablation:
 1. **MR.CAP baseline** (`mrcap_controller`, unweighted centroid estimator) — control reference.
-2. **MR.CAP + weighted Procrustes only** (estimator swap, MR.CAP factors otherwise) — isolates H2.
-3. **Contact-health controller** (this formulation, both changes active) — full proposal.
+2. **+ weighted Procrustes only** (estimator swap, otherwise MR.CAP) — isolates H2.
+3. **+ weighted Procrustes + contact-health regulariser** (FG-level changes only, no per-robot recovery) — isolates H1.
+4. **Full contact-health controller** (all three changes active) — full proposal, tests H3.
+
+The ablation lets each change be credited or discredited independently.
 
 Two scenarios per condition:
 - **A. Nominal:** all robots at full friction; tests H1.
@@ -272,9 +327,11 @@ implemented.
 
 ## Notes on real-lab transfer
 
-The two FG-level changes both reduce to additional scalar inputs at the
-controller boundary ($n$ wall forces, $n$ base forces) — quantities the lab
-load cells already produce. Neither change touches the wheel-level control
-stack or the sim-to-real interface. The same problem statement is therefore
-testable identically in MuJoCo and in the lab, conditional on calibrating
-$F_{wall}^*$ and $F_{base}^*$ from a known rest pose.
+All three changes reduce to additional scalar inputs at the controller
+boundary ($n$ wall forces, $n$ base forces) — quantities the lab load cells
+already produce — plus a per-robot post-solve correction expressed in the
+same world-frame velocity command the controller already emits. Nothing
+touches the wheel-level control stack or the sim-to-real interface. The
+same problem statement is therefore testable identically in MuJoCo and in
+the lab, conditional on calibrating $F_{wall}^*$ and $F_{base}^*$ from a
+known rest pose.
