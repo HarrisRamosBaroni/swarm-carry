@@ -142,6 +142,87 @@ def face_contact_formation(
     return [(dx * s, dy * s, yaw) for dx, dy, yaw, s in
             (_faces[fi] for fi in indices)]
 
+def face_contact_formation_many_robots(
+    n: int,
+    payload_hx: float = 0.30,
+    payload_hy: float = 0.30,
+    robot_spacing: float = 0.60,
+    grow_payload: bool = True,
+    robot_size_offset=0.7,
+) -> List[Tuple[float, float, float]]:
+    """
+    Place up to ~20 robots around a rectangular payload, allowing
+    multiple robots per face.
+
+    Robots are evenly distributed across faces and spaced along edges.
+
+    Parameters
+    ----------
+    n : number of robots
+    payload_hx, payload_hy : half-sizes of payload
+    robot_spacing : spacing between robots along a face
+    grow_payload : if True, expand payload to fit robots
+
+    Returns
+    -------
+    [(x_off, y_off, yaw), ...]
+    """
+
+    if n < 1:
+        raise ValueError("n must be >= 1")
+
+    # --- distribute robots across 4 faces ---
+    base = n // 4
+    remainder = n % 4
+
+    robots_per_face = [base] * 4
+    for i in range(remainder):
+        robots_per_face[i] += 1
+
+    # --- optionally grow payload ---
+    max_x_face = max(robots_per_face[1], robots_per_face[3])  # +/- y faces
+    max_y_face = max(robots_per_face[0], robots_per_face[2])  # +/- x faces
+
+    if grow_payload:
+        payload_hx = max(payload_hx, ((max_x_face - 1) * robot_spacing + robot_size_offset) / 2)
+        payload_hy = max(payload_hy, ((max_y_face - 1) * robot_spacing + robot_size_offset) / 2)
+
+    formations = []
+
+    def spread_positions(count, length_half):
+        """Return evenly spaced coordinates along a face."""
+        if count == 1:
+            return [0.0]
+        total_length = (count - 1) * robot_spacing
+        start = -total_length / 2
+        return [start + i * robot_spacing for i in range(count)]
+
+    # --- define faces ---
+    faces = [
+        (-1,  0,  0.0,            payload_hx + _FORK_WALL_REACH),   # -x
+        ( 0,  1, -math.pi / 2,    payload_hy + _FORK_WALL_REACH),   # +y
+        ( 1,  0,  math.pi,        payload_hx + _FORK_WALL_REACH),   # +x
+        ( 0, -1,  math.pi / 2,    payload_hy + _FORK_WALL_REACH),   # -y
+    ]
+
+    # --- place robots ---
+    for face_idx, (dx, dy, yaw, standoff) in enumerate(faces):
+        count = robots_per_face[face_idx]
+        if count == 0:
+            continue
+
+        # spread along perpendicular axis
+        if dx != 0:  # vertical face → spread along y
+            offsets = spread_positions(count, payload_hy)
+            for off in offsets:
+                formations.append((dx * standoff, off, yaw))
+        else:        # horizontal face → spread along x
+            offsets = spread_positions(count, payload_hx)
+            for off in offsets:
+                formations.append((off, dy * standoff, yaw))
+
+    return formations, (payload_hx, payload_hy)
+
 
 # ---------------------------------------------------------------------------
 # XML manipulation helpers

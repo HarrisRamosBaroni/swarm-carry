@@ -49,6 +49,7 @@ import numpy as np
 
 from swarmlib.simulation.mecanum_env import MecanumTransportEnv
 from swarmlib.simulation.generate_mecanum_scene import face_contact_formation
+from swarmlib.simulation.generate_mecanum_scene import face_contact_formation_many_robots
 from swarmlib.controllers import (
     MRCapController,
     # DRCapController,
@@ -77,7 +78,9 @@ DecentralisedControllers = [DRCapDistributedController, ForceDistributedControll
 
 distances_to_goal = [i * 3 for i in range(1,11)]
 
-numbers_of_robots = [2,3,4] #TODO look into getting more robots in formation, currently max of 4
+numbers_of_robots = [i*2 for i in range(1,11)] #TODO look into getting more robots in formation, currently max of 4
+# numbers_of_robots = [20] #TEMP
+
 
 horizons = [i * 3 for i in range(1,11)]
 
@@ -100,6 +103,10 @@ default_horizon = 15
 PAYLOAD_HX = 0.450
 PAYLOAD_HY = 0.450
 PAYLOAD_HZ = 0.12
+
+# PAYLOAD_HX = 0.850
+# PAYLOAD_HY = 0.850
+# PAYLOAD_HZ = 0.12
 
 
 # ---------------------------------------------------------------------------
@@ -147,9 +154,22 @@ def run_single(
 ) -> dict:
     goal = (distance, 0.0, 0.0)
     payload_size = (PAYLOAD_HX, PAYLOAD_HY, PAYLOAD_HZ)
-    formation = face_contact_formation(n_robots,
+    # formation = face_contact_formation(n_robots,
+    #                                    payload_hx=PAYLOAD_HX,
+    #                                    payload_hy=PAYLOAD_HY)
+    formation, recommended_payload_xy_size = face_contact_formation_many_robots(n_robots,
                                        payload_hx=PAYLOAD_HX,
                                        payload_hy=PAYLOAD_HY)
+    
+    if payload_size[0:2] != recommended_payload_xy_size:
+        print(f"Warning: payload size {payload_size[0:2]} might be too small \
+for {n_robots} robots formation, using size {recommended_payload_xy_size} instead ")
+        payload_size = (recommended_payload_xy_size[0], 
+                        recommended_payload_xy_size[1], 
+                        PAYLOAD_HZ)
+    
+
+    
 
     env = MecanumTransportEnv(
         n_robots=n_robots,
@@ -214,7 +234,8 @@ def run_single(
             )
 
     else:
-        controller = ChosenController(
+        if ChosenController is ForceDistributedController:
+            controller = ChosenController(
             num_robots=n_robots,
             formation=formation,
             backend=backend,
@@ -222,7 +243,7 @@ def run_single(
                 "horizon": horizon,
                 "v_max": v_max,
                 "sigma_x": 0.5,
-                "sigma_u": 0.3,
+                "sigma_u": 3, #force distributed needs higher val
                 "sigma_anchor": 0.01,
                 "sigma_r2r": 0.05,
                 "sigma_pull_in": 0.3,
@@ -231,6 +252,24 @@ def run_single(
                 "gbp_tol": 1e-3,
             },
         )
+        else:
+            controller = ChosenController(
+                num_robots=n_robots,
+                formation=formation,
+                backend=backend,
+                config={
+                    "horizon": horizon,
+                    "v_max": v_max,
+                    "sigma_x": 0.5,
+                    "sigma_u": 0.3,
+                    "sigma_anchor": 0.01,
+                    "sigma_r2r": 0.05,
+                    "sigma_pull_in": 0.3,
+                    "sigma_consensus": 0.1,
+                    "gbp_max_iters": gbp_max_iters,
+                    "gbp_tol": 1e-3,
+                },
+            )
 
     mass_estimate = None
     centroid_velocity_estimtate = None
@@ -502,7 +541,7 @@ def main():
 
 
     #TEST NUMBER OF ROBOTS
-    for idx, n in enumerate(n_values):
+    for idx, n in enumerate(numbers_of_robots):
         for controller in ControllersList:
             print(f"Running n={n} with controller:{controller} ...", flush=True)
             result = run_single(

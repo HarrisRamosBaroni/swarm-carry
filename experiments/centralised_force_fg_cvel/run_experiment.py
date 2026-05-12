@@ -50,7 +50,8 @@ def run_single(
     visualise: bool = False,
     sim_speed: float = 1.0,
 ) -> dict:
-    goal = (distance, 0.0, 0.0)
+    # goal = (distance, 3.0, 0.0) 
+    goal = (0.5, -3.0, 0.0) 
     payload_size = (PAYLOAD_HX, PAYLOAD_HY, PAYLOAD_HZ)
     formation = face_contact_formation(n_robots,
                                        payload_hx=PAYLOAD_HX,
@@ -66,6 +67,7 @@ def run_single(
         vel_feedback=True,
         with_carriage=True,
         dt_control=0.05,
+        scene_xml="swarmlib/simulation/temp_scene.xml"
     )
 
     # Formation offsets passed to controller must match env formation
@@ -123,6 +125,21 @@ def run_single(
             mass_estimate=mass_estimate,
             centroid_velocity_estimate=centroid_velocity_estimtate
         )
+
+        
+
+        #TODO set controls to 0 if too low
+        cmd_threshold = 0.1
+        # for robot_controls in controls:
+        #     for axis_velocity_cmd in robot_controls:
+        #         if axis_velocity_cmd < cmd_threshold:
+        #             axis_velocity_cmd = 0
+        # np.where(controls<cmd_threshold,0.0,controls)
+
+        controls[np.abs(controls) < cmd_threshold] = 0
+
+        print('controls generated:',controls)
+
         solve_times.append(controller.get_solve_time())
 
         obs = env.step(controls)
