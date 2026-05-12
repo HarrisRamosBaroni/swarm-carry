@@ -153,7 +153,13 @@ class LocalRobotGraph:
         """Build a straight-line reference and precompute linear H_lin, b_lin."""
         self._robot_pose    = np.asarray(robot_pose,    dtype=float)
         self._centroid_pose = np.asarray(centroid_pose, dtype=float)
-        self._goal          = np.asarray(goal,          dtype=float)
+        goal                = np.asarray(goal,          dtype=float).copy()
+        # Wrap goal θ to the unwrapped neighbour of the current centroid θ so
+        # the ref interpolation and terminal anchor take the short way around
+        # ±π instead of commanding a near-full rotation.
+        d_th = (goal[2] - self._centroid_pose[2] + np.pi) % (2 * np.pi) - np.pi
+        goal[2] = self._centroid_pose[2] + d_th
+        self._goal          = goal
         self.dt = max(float(dt), 1e-9)
 
         N = self.N

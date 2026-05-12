@@ -44,7 +44,7 @@ except ImportError:
     raise ImportError("gtsam required: pip install gtsam")
 
 from .base_controller import BaseController
-from .mrcap_controller import _prior_error, _motion_model_error
+from .mrcap_controller import _prior_error, _motion_model_error, _wrap_pi
 from .weighted_centroid_estimator import WeightedCentroidEstimator
 
 
@@ -330,7 +330,10 @@ class ContactHealthController(BaseController):
         sigma_u_eff: float,
     ) -> np.ndarray:
         N = self._N
-        ref = np.array([centroid + (j / N) * (goal - centroid) for j in range(N + 1)])
+        # Wrap Δθ so the interpolation takes the short way around ±π.
+        delta = goal - centroid
+        delta[2] = _wrap_pi(delta[2])
+        ref = np.array([centroid + (j / N) * delta for j in range(N + 1)])
 
         # σ_u may differ from step to step → rebuild on the fly. Other noise
         # models are static (built once in __init__).

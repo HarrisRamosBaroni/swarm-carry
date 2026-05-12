@@ -66,15 +66,22 @@ from .base_controller import BaseController
 # Reusable factor error functions
 # ---------------------------------------------------------------------------
 
+def _wrap_pi(a: float) -> float:
+    """Wrap an angle (radians) to (-pi, pi]."""
+    return (a + np.pi) % (2 * np.pi) - np.pi
+
+
 def _prior_error(
     measurement: np.ndarray,
     this: gtsam.CustomFactor,
     values: gtsam.Values,
     jacobians: Optional[List[np.ndarray]],
 ) -> np.ndarray:
-    """Prior factor: error = variable - measurement."""
+    """Prior factor: error = variable - measurement. θ residual wrapped."""
     v = values.atVector(this.keys()[0])
     error = v - measurement
+    if len(measurement) == 3:
+        error[2] = _wrap_pi(error[2])
     if jacobians is not None:
         jacobians[0] = np.eye(len(measurement))
 
@@ -176,6 +183,7 @@ def _motion_model_error(
     Cj1 = values.atVector(this.keys()[2])
 
     error = Cj1 - (Cj + dt * Uj)
+    error[2] = _wrap_pi(error[2])
 
     if jacobians is not None:
         I3 = np.eye(3)
@@ -205,6 +213,7 @@ def _motion_force_model_error(
     F = np.array([forces[0], forces[1], 0.0]) #F_x, F_y, F_theta = 0 bc ignoring torque right now
 
     error = Cj1 - (Cj + dt * Uj + (0.5 * (dt**2) / M) * F)
+    error[2] = _wrap_pi(error[2])
 
     if jacobians is not None:
         I3 = np.eye(3)
@@ -342,7 +351,10 @@ class ForceCentralisedControllerCVel(BaseController):
         N = self._N
 
         # Linear reference trajectory from current centroid to goal #5th factor hidden here
-        ref = np.array([centroid + (j / N) * (goal - centroid) for j in range(N + 1)])
+        # Wrap Δθ so the interpolation takes the short way around ±π.
+        delta = goal - centroid
+        delta[2] = _wrap_pi(delta[2])
+        ref = np.array([centroid + (j / N) * delta for j in range(N + 1)])
 
         # Project each robot's wall-force scalar to world frame using its heading, then sum.
         # wall_forces[i] is Fx in robot i's local frame (force pressing payload against wall).

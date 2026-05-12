@@ -45,15 +45,24 @@ from .centroid_estimator import CentroidEstimator
 # Reusable factor error functions
 # ---------------------------------------------------------------------------
 
+def _wrap_pi(a: float) -> float:
+    """Wrap an angle (radians) to (-pi, pi]."""
+    return (a + np.pi) % (2 * np.pi) - np.pi
+
+
 def _prior_error(
     measurement: np.ndarray,
     this: gtsam.CustomFactor,
     values: gtsam.Values,
     jacobians: Optional[List[np.ndarray]],
 ) -> np.ndarray:
-    """Prior factor: error = variable - measurement."""
+    """Prior factor: error = variable - measurement. θ component wrapped."""
     v = values.atVector(this.keys()[0])
     error = v - measurement
+    # If this is a pose-like 3-vector [x, y, theta], wrap the θ residual so
+    # the optimiser doesn't take the long way around ±π.
+    if len(measurement) == 3:
+        error[2] = _wrap_pi(error[2])
     if jacobians is not None:
         jacobians[0] = np.eye(len(measurement))
     return error
@@ -68,13 +77,14 @@ def _motion_model_error(
     """
     Euler motion model: C_{j+1} = C_j + dt * U_j
     Keys: [C_j, U_j, C_{j+1}]
-    error = C_{j+1} - (C_j + dt * U_j)
+    error = C_{j+1} - (C_j + dt * U_j), θ residual wrapped to (-pi, pi].
     """
     Cj  = values.atVector(this.keys()[0])
     Uj  = values.atVector(this.keys()[1])
     Cj1 = values.atVector(this.keys()[2])
 
     error = Cj1 - (Cj + dt * Uj)
+    error[2] = _wrap_pi(error[2])
 
     if jacobians is not None:
         I3 = np.eye(3)
@@ -194,8 +204,11 @@ class MRCapController(BaseController):
         """Solve FG and return optimal centroid control [vx, vy, omega]."""
         N = self._N
 
-        # Linear reference trajectory from current centroid to goal
-        ref = np.array([centroid + (j / N) * (goal - centroid) for j in range(N + 1)])
+        # Linear reference trajectory from current centroid to goal.
+        # Wrap Δθ so the interpolation takes the short way around ±π.
+        delta = goal - centroid
+        delta[2] = _wrap_pi(delta[2])
+        ref = np.array([centroid + (j / N) * delta for j in range(N + 1)])
 
         graph = gtsam.NonlinearFactorGraph()
         init  = gtsam.Values()
