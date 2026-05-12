@@ -1,0 +1,786 @@
+<mujoco model="mecanum_carriage_swarm">
+  <compiler angle="radian" autolimits="true" meshdir="C:\Users\andys\Documents\Ecole\UCL_year3\dot\swarm-carry\models\holonomic_dp\robots\summit_xl_description\meshes"/>
+
+  <option integrator="Euler" timestep="0.002">
+    <flag contact="enable" warmstart="enable"/>
+  </option>
+
+  <size njmax="4000" nconmax="2000"/>
+
+  <statistic center="0.25 0.00 0.5" extent="4.0"/>
+
+  <visual>
+    <headlight diffuse="0.6 0.6 0.6" ambient="0.3 0.3 0.3" specular="0 0 0"/>
+    <rgba haze="0.15 0.25 0.35 1"/>
+    <global azimuth="120" elevation="-20"/>
+  </visual>
+
+  <asset>
+    <texture name="texplane" type="2d" builtin="checker"
+             rgb1=".2 .3 .4" rgb2=".1 0.2 0.3" width="512" height="512"/>
+    <material name="MatGnd" reflectance="0.5" texture="texplane"
+              texrepeat="5 5" texuniform="true"/>
+    <mesh name="summit_xls_chassis"          file="bases/xls/summit_xls_chassis.stl"/>
+    <mesh name="summit_xls_chapas_inox_tapas" file="bases/xls/summit_xls_chapas_inox_tapas.stl"/>
+    <mesh name="robotnik_logo_chasis"        file="bases/xls/robotnik_logo_chasis.stl"/>
+    <mesh name="summit_xls_omni_wheel_1"     file="wheels/omni_wheel_1.stl"/>
+    <mesh name="summit_xls_omni_wheel_2"     file="wheels/omni_wheel_2.stl"/>
+    <mesh name="structure_hokuyo"            file="structures/structure_hokuyo.stl"/>
+  </asset>
+
+  <default>
+    <joint armature="0.01"/>
+    <geom condim="4" solimp="0.99 0.99 0.001" solref="0.01 1"/>
+  </default>
+
+  <worldbody>
+    <light pos="0.25 0 4" dir="0 0 -1" directional="true"/>
+    <geom name="floor" size="0 0 0.05" type="plane" material="MatGnd" friction="0.0000001 0.005 0.0001"/> <!-- old friction coefs: no friction specified at all, just remove it -->
+
+    <!-- Goal marker (visual only) -->
+    <geom name="goal_marker" type="box"
+          size="0.450 0.450 0.005"
+          pos="0.500 -3.000 0.005"
+          rgba="0.2 0.8 0.2 0.3" contype="0" conaffinity="0"/>
+
+<body name="robot_0_base_footprint" pos="-0.8400 0.0000 -0.009" euler="0 0 0.000000">
+        <joint type="free" stiffness="0" damping="0" frictionloss="0" armature="0" />
+        
+        
+        <body name="robot_0_base" pos="0 0 0.127">
+            <inertial pos="0 0 0" quat="1 0 0 0" mass="125.0" diaginertia="1.391 6.853 6.125" />
+            <geom type="mesh" rgba="0 0 0 1" mesh="summit_xls_chassis" contype="1" conaffinity="0" group="1" />
+
+            
+            <geom type="mesh" pos="0.0 0 0.38062" quat="1 0 0 0" rgba="0.5 0.5 0.5 1" mesh="summit_xls_chapas_inox_tapas" contype="0" conaffinity="0" group="2" />
+
+            
+            <geom type="mesh" pos="0.0 0.28931 0.29062" quat="1 0 0 0" rgba="0.5 0.5 0.5 1" mesh="robotnik_logo_chasis" contype="0" conaffinity="0" group="2" />
+
+            
+            <geom type="mesh" pos="0.0 -0.28931 0.29062" quat="0 0 0 1" rgba="0.5 0.5 0.5 1" mesh="robotnik_logo_chasis" contype="0" conaffinity="0" group="2" />
+
+            
+            <geom type="mesh" pos="0.345 0.0 0.0" quat="-0.7071068 0 0 0.7071068" rgba="0.5 0.5 0.5 1" mesh="robotnik_logo_chasis" contype="0" conaffinity="0" group="2" />
+
+            
+            <geom type="mesh" pos="-0.345 0.0 0.0" quat="0.7071068 0 0 0.7071068" rgba="0.5 0.5 0.5 1" mesh="robotnik_logo_chasis" contype="0" conaffinity="0" group="2" />
+        
+
+
+
+
+        
+        <body name="robot_0_front_right_wheel_intermediate_link" pos="0.2225 -0.2045 0">
+            <inertial pos="0 0 0" quat="0.707107 0 0 0.707107" mass="6.5" diaginertia="0.0524193 0.0303095 0.0303095" />
+            <joint name="robot_0_front_right_wheel_rolling_joint" pos="0 0 0" axis="0 1 0" />
+            <geom size="0.120 0.0435" quat="0.707107 0.707107 0 0" type="cylinder" rgba="0.2 0.2 0.2 0.5" contype="1" conaffinity="0" group="3" />
+            <geom type="mesh" mesh="summit_xls_omni_wheel_2" contype="0" conaffinity="0" group="2" rgba="0.2 0.2 0.2 1" />
+        
+
+            <body name="robot_0_front_right_roller_0_link" pos="0.04385159698893431 0.0 0.011749999999999998">
+                <joint name="robot_0_front_right_slipping_0_joint" type="hinge" pos="0 0 0" axis="-0.006296806022131382 0.0435 0.023499999999999997" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_front_right_roller_1_link" pos="0.03210159698893431 0.0 0.032101596988934306">
+                <joint name="robot_0_front_right_slipping_1_joint" type="hinge" pos="0 0 0" axis="-0.01720319397786861 0.0435 0.017203193977868615" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_front_right_roller_2_link" pos="0.011750000000000005 0.0 0.0438515969889343">
+                <joint name="robot_0_front_right_slipping_2_joint" type="hinge" pos="0 0 0" axis="-0.023500000000000004 0.0435 0.006296806022131389" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_front_right_roller_3_link" pos="-0.011749999999999993 0.0 0.04385159698893431">
+                <joint name="robot_0_front_right_slipping_3_joint" type="hinge" pos="0 0 0" axis="-0.023499999999999993 0.0435 -0.006296806022131382" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_front_right_roller_4_link" pos="-0.0321015969889343 0.0 0.03210159698893432">
+                <joint name="robot_0_front_right_slipping_4_joint" type="hinge" pos="0 0 0" axis="-0.01720319397786862 0.0435 -0.0172031939778686" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_front_right_roller_5_link" pos="-0.0438515969889343 0.0 0.011750000000000012">
+                <joint name="robot_0_front_right_slipping_5_joint" type="hinge" pos="0 0 0" axis="-0.006296806022131389 0.0435 -0.02350000000000001" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_front_right_roller_6_link" pos="-0.043851596988934316 0.0 -0.011749999999999991">
+                <joint name="robot_0_front_right_slipping_6_joint" type="hinge" pos="0 0 0" axis="0.006296806022131375 0.0435 -0.023499999999999993" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_front_right_roller_7_link" pos="-0.03210159698893432 0.0 -0.03210159698893429">
+                <joint name="robot_0_front_right_slipping_7_joint" type="hinge" pos="0 0 0" axis="0.017203193977868604 0.0435 -0.017203193977868618" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_front_right_roller_8_link" pos="-0.011750000000000014 0.0 -0.0438515969889343">
+                <joint name="robot_0_front_right_slipping_8_joint" type="hinge" pos="0 0 0" axis="0.023500000000000014 0.0435 -0.006296806022131396" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_front_right_roller_9_link" pos="0.01174999999999998 0.0 -0.043851596988934316">
+                <joint name="robot_0_front_right_slipping_9_joint" type="hinge" pos="0 0 0" axis="0.023499999999999976 0.0435 0.006296806022131368" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_front_right_roller_10_link" pos="0.032101596988934285 0.0 -0.032101596988934326">
+                <joint name="robot_0_front_right_slipping_10_joint" type="hinge" pos="0 0 0" axis="0.017203193977868635 0.0435 0.01720319397786861" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_front_right_roller_11_link" pos="0.0438515969889343 0.0 -0.01175000000000001">
+                <joint name="robot_0_front_right_slipping_11_joint" type="hinge" pos="0 0 0" axis="0.006296806022131396 0.0435 0.02350000000000002" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+        </body>
+
+        <body name="robot_0_front_left_wheel_intermediate_link" pos="0.2225 0.2045 0">
+            <inertial pos="0 0 0" quat="0.707107 0 0 0.707107" mass="6.5" diaginertia="0.0524193 0.0303095 0.0303095" />
+            <joint name="robot_0_front_left_wheel_rolling_joint" pos="0 0 0" axis="0 1 0" />
+            <geom size="0.120 0.0435" quat="0.707107 0.707107 0 0" type="cylinder" rgba="0.2 0.2 0.2 0.5" contype="1" conaffinity="0" group="3" />
+            <geom type="mesh" mesh="summit_xls_omni_wheel_1" contype="0" conaffinity="0" group="2" rgba="0.2 0.2 0.2 1" />
+
+
+            <body name="robot_0_front_left_roller_0_link" pos="0.0438515969889343 0.0 -0.01175000000000001">
+                <joint name="robot_0_front_left_slipping_0_joint" type="hinge" pos="0 0 0" axis="-0.006296806022131396 0.0435 -0.02350000000000002" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_front_left_roller_1_link" pos="0.04385159698893431 0.0 0.011749999999999998">
+                <joint name="robot_0_front_left_slipping_1_joint" type="hinge" pos="0 0 0" axis="0.006296806022131382 0.0435 -0.023499999999999997" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_front_left_roller_2_link" pos="0.03210159698893431 0.0 0.032101596988934306">
+                <joint name="robot_0_front_left_slipping_2_joint" type="hinge" pos="0 0 0" axis="0.01720319397786861 0.0435 -0.017203193977868615" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_front_left_roller_3_link" pos="0.011750000000000005 0.0 0.0438515969889343">
+                <joint name="robot_0_front_left_slipping_3_joint" type="hinge" pos="0 0 0" axis="0.023500000000000004 0.0435 -0.006296806022131389" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_front_left_roller_4_link" pos="-0.011749999999999993 0.0 0.04385159698893431">
+                <joint name="robot_0_front_left_slipping_4_joint" type="hinge" pos="0 0 0" axis="0.023499999999999993 0.0435 0.006296806022131382" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_front_left_roller_5_link" pos="-0.0321015969889343 0.0 0.03210159698893432">
+                <joint name="robot_0_front_left_slipping_5_joint" type="hinge" pos="0 0 0" axis="0.01720319397786862 0.0435 0.0172031939778686" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_front_left_roller_6_link" pos="-0.0438515969889343 0.0 0.01175000000000001">
+                <joint name="robot_0_front_left_slipping_6_joint" type="hinge" pos="0 0 0" axis="0.006296806022131389 0.0435 0.02350000000000001" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_front_left_roller_7_link" pos="-0.043851596988934316 0.0 -0.01174999999999999">
+                <joint name="robot_0_front_left_slipping_7_joint" type="hinge" pos="0 0 0" axis="-0.006296806022131375 0.0435 0.023499999999999993" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_front_left_roller_8_link" pos="-0.03210159698893432 0.0 -0.03210159698893429">
+                <joint name="robot_0_front_left_slipping_8_joint" type="hinge" pos="0 0 0" axis="-0.017203193977868604 0.0435 0.017203193977868618" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_front_left_roller_9_link" pos="-0.011750000000000016 0.0 -0.0438515969889343">
+                <joint name="robot_0_front_left_slipping_9_joint" type="hinge" pos="0 0 0" axis="-0.023500000000000014 0.0435 0.006296806022131396" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_front_left_roller_10_link" pos="0.011749999999999981 0.0 -0.043851596988934316">
+                <joint name="robot_0_front_left_slipping_10_joint" type="hinge" pos="0 0 0" axis="-0.023499999999999976 0.0435 -0.006296806022131368" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_front_left_roller_11_link" pos="0.032101596988934285 0.0 -0.032101596988934326">
+                <joint name="robot_0_front_left_slipping_11_joint" type="hinge" pos="0 0 0" axis="-0.017203193977868635 0.0435 -0.01720319397786861" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+        </body>
+
+        <body name="robot_0_back_right_wheel_intermediate_link" pos="-0.2225 -0.2045 0">
+            <inertial pos="0 0 0" quat="0.707107 0 0 0.707107" mass="6.5" diaginertia="0.0524193 0.0303095 0.0303095" />
+            <joint name="robot_0_back_right_wheel_rolling_joint" pos="0 0 0" axis="0 1 0" />
+            <geom size="0.120 0.0435" quat="0.707107 0.707107 0 0" type="cylinder" rgba="0.2 0.2 0.2 0.5" contype="1" conaffinity="0" group="3" />
+            <geom type="mesh" mesh="summit_xls_omni_wheel_1" contype="0" conaffinity="0" group="2" rgba="0.2 0.2 0.2 1" />
+
+
+            <body name="robot_0_back_right_roller_0_link" pos="0.0438515969889343 0.0 -0.01175000000000001">
+                <joint name="robot_0_back_right_slipping_0_joint" type="hinge" pos="0 0 0" axis="-0.006296806022131396 0.0435 -0.02350000000000002" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_back_right_roller_1_link" pos="0.04385159698893431 0.0 0.011749999999999998">
+                <joint name="robot_0_back_right_slipping_1_joint" type="hinge" pos="0 0 0" axis="0.006296806022131382 0.0435 -0.023499999999999997" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_back_right_roller_2_link" pos="0.03210159698893431 0.0 0.032101596988934306">
+                <joint name="robot_0_back_right_slipping_2_joint" type="hinge" pos="0 0 0" axis="0.01720319397786861 0.0435 -0.017203193977868615" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_back_right_roller_3_link" pos="0.011750000000000005 0.0 0.0438515969889343">
+                <joint name="robot_0_back_right_slipping_3_joint" type="hinge" pos="0 0 0" axis="0.023500000000000004 0.0435 -0.006296806022131389" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_back_right_roller_4_link" pos="-0.011749999999999993 0.0 0.04385159698893431">
+                <joint name="robot_0_back_right_slipping_4_joint" type="hinge" pos="0 0 0" axis="0.023499999999999993 0.0435 0.006296806022131382" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_back_right_roller_5_link" pos="-0.0321015969889343 0.0 0.03210159698893432">
+                <joint name="robot_0_back_right_slipping_5_joint" type="hinge" pos="0 0 0" axis="0.01720319397786862 0.0435 0.0172031939778686" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_back_right_roller_6_link" pos="-0.0438515969889343 0.0 0.01175000000000001">
+                <joint name="robot_0_back_right_slipping_6_joint" type="hinge" pos="0 0 0" axis="0.006296806022131389 0.0435 0.02350000000000001" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_back_right_roller_7_link" pos="-0.043851596988934316 0.0 -0.01174999999999999">
+                <joint name="robot_0_back_right_slipping_7_joint" type="hinge" pos="0 0 0" axis="-0.006296806022131375 0.0435 0.023499999999999993" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_back_right_roller_8_link" pos="-0.03210159698893432 0.0 -0.03210159698893429">
+                <joint name="robot_0_back_right_slipping_8_joint" type="hinge" pos="0 0 0" axis="-0.017203193977868604 0.0435 0.017203193977868618" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_back_right_roller_9_link" pos="-0.011750000000000016 0.0 -0.0438515969889343">
+                <joint name="robot_0_back_right_slipping_9_joint" type="hinge" pos="0 0 0" axis="-0.023500000000000014 0.0435 0.006296806022131396" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_back_right_roller_10_link" pos="0.011749999999999981 0.0 -0.043851596988934316">
+                <joint name="robot_0_back_right_slipping_10_joint" type="hinge" pos="0 0 0" axis="-0.023499999999999976 0.0435 -0.006296806022131368" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_back_right_roller_11_link" pos="0.032101596988934285 0.0 -0.032101596988934326">
+                <joint name="robot_0_back_right_slipping_11_joint" type="hinge" pos="0 0 0" axis="-0.017203193977868635 0.0435 -0.01720319397786861" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+        </body>
+
+        <body name="robot_0_back_left_wheel_intermediate_link" pos="-0.2225 0.2045 0">
+            <inertial pos="0 0 0" quat="0.707107 0 0 0.707107" mass="6.5" diaginertia="0.0524193 0.0303095 0.0303095" />
+            <joint name="robot_0_back_left_wheel_rolling_joint" pos="0 0 0" axis="0 1 0" />
+            <geom size="0.120 0.0435" quat="0.707107 0.707107 0 0" type="cylinder" rgba="0.2 0.2 0.2 0.5" contype="1" conaffinity="0" group="3" />
+            <geom type="mesh" mesh="summit_xls_omni_wheel_2" contype="0" conaffinity="0" group="2" rgba="0.2 0.2 0.2 1" />
+
+
+            <body name="robot_0_back_left_roller_0_link" pos="0.04385159698893431 0.0 0.011749999999999998">
+                <joint name="robot_0_back_left_slipping_0_joint" type="hinge" pos="0 0 0" axis="-0.006296806022131382 0.0435 0.023499999999999997" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_back_left_roller_1_link" pos="0.03210159698893431 0.0 0.032101596988934306">
+                <joint name="robot_0_back_left_slipping_1_joint" type="hinge" pos="0 0 0" axis="-0.01720319397786861 0.0435 0.017203193977868615" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_back_left_roller_2_link" pos="0.011750000000000005 0.0 0.0438515969889343">
+                <joint name="robot_0_back_left_slipping_2_joint" type="hinge" pos="0 0 0" axis="-0.023500000000000004 0.0435 0.006296806022131389" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_back_left_roller_3_link" pos="-0.011749999999999993 0.0 0.04385159698893431">
+                <joint name="robot_0_back_left_slipping_3_joint" type="hinge" pos="0 0 0" axis="-0.023499999999999993 0.0435 -0.006296806022131382" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_back_left_roller_4_link" pos="-0.0321015969889343 0.0 0.03210159698893432">
+                <joint name="robot_0_back_left_slipping_4_joint" type="hinge" pos="0 0 0" axis="-0.01720319397786862 0.0435 -0.0172031939778686" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_back_left_roller_5_link" pos="-0.0438515969889343 0.0 0.011750000000000012">
+                <joint name="robot_0_back_left_slipping_5_joint" type="hinge" pos="0 0 0" axis="-0.006296806022131389 0.0435 -0.02350000000000001" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_back_left_roller_6_link" pos="-0.043851596988934316 0.0 -0.011749999999999991">
+                <joint name="robot_0_back_left_slipping_6_joint" type="hinge" pos="0 0 0" axis="0.006296806022131375 0.0435 -0.023499999999999993" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_back_left_roller_7_link" pos="-0.03210159698893432 0.0 -0.03210159698893429">
+                <joint name="robot_0_back_left_slipping_7_joint" type="hinge" pos="0 0 0" axis="0.017203193977868604 0.0435 -0.017203193977868618" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_back_left_roller_8_link" pos="-0.011750000000000014 0.0 -0.0438515969889343">
+                <joint name="robot_0_back_left_slipping_8_joint" type="hinge" pos="0 0 0" axis="0.023500000000000014 0.0435 -0.006296806022131396" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_back_left_roller_9_link" pos="0.01174999999999998 0.0 -0.043851596988934316">
+                <joint name="robot_0_back_left_slipping_9_joint" type="hinge" pos="0 0 0" axis="0.023499999999999976 0.0435 0.006296806022131368" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_back_left_roller_10_link" pos="0.032101596988934285 0.0 -0.032101596988934326">
+                <joint name="robot_0_back_left_slipping_10_joint" type="hinge" pos="0 0 0" axis="0.017203193977868635 0.0435 0.01720319397786861" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_0_back_left_roller_11_link" pos="0.0438515969889343 0.0 -0.01175000000000001">
+                <joint name="robot_0_back_left_slipping_11_joint" type="hinge" pos="0 0 0" axis="0.006296806022131396 0.0435 0.02350000000000002" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+        </body>
+    
+    <body name="robot_0_fork_base" pos="0.4550 0 0.3920"><inertial pos="0 0 0" mass="0.1" diaginertia="0.0001 0.0001 0.0001" /><joint name="robot_0_fork_base_slide" type="slide" axis="0 0 1" stiffness="500.0" damping="40.0" limited="true" range="-0.025 0.025" /><geom type="box" size="0.0750 0.2000 0.0100" rgba="0.75 0.75 0.75 1" friction="0.05 0.005 0.0001" solref="0.01 1" contype="2" conaffinity="1" /><site name="robot_0_base_site" pos="0 0 0.0100" /></body><body name="robot_0_fork_wall" pos="0.3800 0 0.4320"><inertial pos="0 0 0" mass="0.1" diaginertia="0.0001 0.0001 0.0001" /><joint name="robot_0_fork_wall_slide" type="slide" axis="1 0 0" stiffness="500.0" damping="40.0" limited="true" range="-0.025 0.025" /><geom type="box" size="0.0100 0.2000 0.0400" rgba="0.60 0.60 0.60 1" friction="0.05 0.005 0.0001" solref="0.01 1" contype="2" conaffinity="1" /><site name="robot_0_wall_site" pos="0.0100 0 0" /></body></body>  <!-- old friction coefs: friction="0.5 0.005 0.0001" for both -->
+
+    </body>
+
+
+<body name="robot_1_base_footprint" pos="0.8400 0.0000 -0.009" euler="0 0 3.141593">
+        <joint type="free" stiffness="0" damping="0" frictionloss="0" armature="0" />
+        
+        
+        <body name="robot_1_base" pos="0 0 0.127">
+            <inertial pos="0 0 0" quat="1 0 0 0" mass="125.0" diaginertia="1.391 6.853 6.125" />
+            <geom type="mesh" rgba="0 0 0 1" mesh="summit_xls_chassis" contype="1" conaffinity="0" group="1" />
+
+            
+            <geom type="mesh" pos="0.0 0 0.38062" quat="1 0 0 0" rgba="0.5 0.5 0.5 1" mesh="summit_xls_chapas_inox_tapas" contype="0" conaffinity="0" group="2" />
+
+            
+            <geom type="mesh" pos="0.0 0.28931 0.29062" quat="1 0 0 0" rgba="0.5 0.5 0.5 1" mesh="robotnik_logo_chasis" contype="0" conaffinity="0" group="2" />
+
+            
+            <geom type="mesh" pos="0.0 -0.28931 0.29062" quat="0 0 0 1" rgba="0.5 0.5 0.5 1" mesh="robotnik_logo_chasis" contype="0" conaffinity="0" group="2" />
+
+            
+            <geom type="mesh" pos="0.345 0.0 0.0" quat="-0.7071068 0 0 0.7071068" rgba="0.5 0.5 0.5 1" mesh="robotnik_logo_chasis" contype="0" conaffinity="0" group="2" />
+
+            
+            <geom type="mesh" pos="-0.345 0.0 0.0" quat="0.7071068 0 0 0.7071068" rgba="0.5 0.5 0.5 1" mesh="robotnik_logo_chasis" contype="0" conaffinity="0" group="2" />
+        
+
+
+
+
+        
+        <body name="robot_1_front_right_wheel_intermediate_link" pos="0.2225 -0.2045 0">
+            <inertial pos="0 0 0" quat="0.707107 0 0 0.707107" mass="6.5" diaginertia="0.0524193 0.0303095 0.0303095" />
+            <joint name="robot_1_front_right_wheel_rolling_joint" pos="0 0 0" axis="0 1 0" />
+            <geom size="0.120 0.0435" quat="0.707107 0.707107 0 0" type="cylinder" rgba="0.2 0.2 0.2 0.5" contype="1" conaffinity="0" group="3" />
+            <geom type="mesh" mesh="summit_xls_omni_wheel_2" contype="0" conaffinity="0" group="2" rgba="0.2 0.2 0.2 1" />
+        
+
+            <body name="robot_1_front_right_roller_0_link" pos="0.04385159698893431 0.0 0.011749999999999998">
+                <joint name="robot_1_front_right_slipping_0_joint" type="hinge" pos="0 0 0" axis="-0.006296806022131382 0.0435 0.023499999999999997" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_front_right_roller_1_link" pos="0.03210159698893431 0.0 0.032101596988934306">
+                <joint name="robot_1_front_right_slipping_1_joint" type="hinge" pos="0 0 0" axis="-0.01720319397786861 0.0435 0.017203193977868615" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_front_right_roller_2_link" pos="0.011750000000000005 0.0 0.0438515969889343">
+                <joint name="robot_1_front_right_slipping_2_joint" type="hinge" pos="0 0 0" axis="-0.023500000000000004 0.0435 0.006296806022131389" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_front_right_roller_3_link" pos="-0.011749999999999993 0.0 0.04385159698893431">
+                <joint name="robot_1_front_right_slipping_3_joint" type="hinge" pos="0 0 0" axis="-0.023499999999999993 0.0435 -0.006296806022131382" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_front_right_roller_4_link" pos="-0.0321015969889343 0.0 0.03210159698893432">
+                <joint name="robot_1_front_right_slipping_4_joint" type="hinge" pos="0 0 0" axis="-0.01720319397786862 0.0435 -0.0172031939778686" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_front_right_roller_5_link" pos="-0.0438515969889343 0.0 0.011750000000000012">
+                <joint name="robot_1_front_right_slipping_5_joint" type="hinge" pos="0 0 0" axis="-0.006296806022131389 0.0435 -0.02350000000000001" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_front_right_roller_6_link" pos="-0.043851596988934316 0.0 -0.011749999999999991">
+                <joint name="robot_1_front_right_slipping_6_joint" type="hinge" pos="0 0 0" axis="0.006296806022131375 0.0435 -0.023499999999999993" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_front_right_roller_7_link" pos="-0.03210159698893432 0.0 -0.03210159698893429">
+                <joint name="robot_1_front_right_slipping_7_joint" type="hinge" pos="0 0 0" axis="0.017203193977868604 0.0435 -0.017203193977868618" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_front_right_roller_8_link" pos="-0.011750000000000014 0.0 -0.0438515969889343">
+                <joint name="robot_1_front_right_slipping_8_joint" type="hinge" pos="0 0 0" axis="0.023500000000000014 0.0435 -0.006296806022131396" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_front_right_roller_9_link" pos="0.01174999999999998 0.0 -0.043851596988934316">
+                <joint name="robot_1_front_right_slipping_9_joint" type="hinge" pos="0 0 0" axis="0.023499999999999976 0.0435 0.006296806022131368" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_front_right_roller_10_link" pos="0.032101596988934285 0.0 -0.032101596988934326">
+                <joint name="robot_1_front_right_slipping_10_joint" type="hinge" pos="0 0 0" axis="0.017203193977868635 0.0435 0.01720319397786861" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_front_right_roller_11_link" pos="0.0438515969889343 0.0 -0.01175000000000001">
+                <joint name="robot_1_front_right_slipping_11_joint" type="hinge" pos="0 0 0" axis="0.006296806022131396 0.0435 0.02350000000000002" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+        </body>
+
+        <body name="robot_1_front_left_wheel_intermediate_link" pos="0.2225 0.2045 0">
+            <inertial pos="0 0 0" quat="0.707107 0 0 0.707107" mass="6.5" diaginertia="0.0524193 0.0303095 0.0303095" />
+            <joint name="robot_1_front_left_wheel_rolling_joint" pos="0 0 0" axis="0 1 0" />
+            <geom size="0.120 0.0435" quat="0.707107 0.707107 0 0" type="cylinder" rgba="0.2 0.2 0.2 0.5" contype="1" conaffinity="0" group="3" />
+            <geom type="mesh" mesh="summit_xls_omni_wheel_1" contype="0" conaffinity="0" group="2" rgba="0.2 0.2 0.2 1" />
+
+
+            <body name="robot_1_front_left_roller_0_link" pos="0.0438515969889343 0.0 -0.01175000000000001">
+                <joint name="robot_1_front_left_slipping_0_joint" type="hinge" pos="0 0 0" axis="-0.006296806022131396 0.0435 -0.02350000000000002" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_front_left_roller_1_link" pos="0.04385159698893431 0.0 0.011749999999999998">
+                <joint name="robot_1_front_left_slipping_1_joint" type="hinge" pos="0 0 0" axis="0.006296806022131382 0.0435 -0.023499999999999997" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_front_left_roller_2_link" pos="0.03210159698893431 0.0 0.032101596988934306">
+                <joint name="robot_1_front_left_slipping_2_joint" type="hinge" pos="0 0 0" axis="0.01720319397786861 0.0435 -0.017203193977868615" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_front_left_roller_3_link" pos="0.011750000000000005 0.0 0.0438515969889343">
+                <joint name="robot_1_front_left_slipping_3_joint" type="hinge" pos="0 0 0" axis="0.023500000000000004 0.0435 -0.006296806022131389" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_front_left_roller_4_link" pos="-0.011749999999999993 0.0 0.04385159698893431">
+                <joint name="robot_1_front_left_slipping_4_joint" type="hinge" pos="0 0 0" axis="0.023499999999999993 0.0435 0.006296806022131382" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_front_left_roller_5_link" pos="-0.0321015969889343 0.0 0.03210159698893432">
+                <joint name="robot_1_front_left_slipping_5_joint" type="hinge" pos="0 0 0" axis="0.01720319397786862 0.0435 0.0172031939778686" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_front_left_roller_6_link" pos="-0.0438515969889343 0.0 0.01175000000000001">
+                <joint name="robot_1_front_left_slipping_6_joint" type="hinge" pos="0 0 0" axis="0.006296806022131389 0.0435 0.02350000000000001" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_front_left_roller_7_link" pos="-0.043851596988934316 0.0 -0.01174999999999999">
+                <joint name="robot_1_front_left_slipping_7_joint" type="hinge" pos="0 0 0" axis="-0.006296806022131375 0.0435 0.023499999999999993" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_front_left_roller_8_link" pos="-0.03210159698893432 0.0 -0.03210159698893429">
+                <joint name="robot_1_front_left_slipping_8_joint" type="hinge" pos="0 0 0" axis="-0.017203193977868604 0.0435 0.017203193977868618" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_front_left_roller_9_link" pos="-0.011750000000000016 0.0 -0.0438515969889343">
+                <joint name="robot_1_front_left_slipping_9_joint" type="hinge" pos="0 0 0" axis="-0.023500000000000014 0.0435 0.006296806022131396" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_front_left_roller_10_link" pos="0.011749999999999981 0.0 -0.043851596988934316">
+                <joint name="robot_1_front_left_slipping_10_joint" type="hinge" pos="0 0 0" axis="-0.023499999999999976 0.0435 -0.006296806022131368" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_front_left_roller_11_link" pos="0.032101596988934285 0.0 -0.032101596988934326">
+                <joint name="robot_1_front_left_slipping_11_joint" type="hinge" pos="0 0 0" axis="-0.017203193977868635 0.0435 -0.01720319397786861" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+        </body>
+
+        <body name="robot_1_back_right_wheel_intermediate_link" pos="-0.2225 -0.2045 0">
+            <inertial pos="0 0 0" quat="0.707107 0 0 0.707107" mass="6.5" diaginertia="0.0524193 0.0303095 0.0303095" />
+            <joint name="robot_1_back_right_wheel_rolling_joint" pos="0 0 0" axis="0 1 0" />
+            <geom size="0.120 0.0435" quat="0.707107 0.707107 0 0" type="cylinder" rgba="0.2 0.2 0.2 0.5" contype="1" conaffinity="0" group="3" />
+            <geom type="mesh" mesh="summit_xls_omni_wheel_1" contype="0" conaffinity="0" group="2" rgba="0.2 0.2 0.2 1" />
+
+
+            <body name="robot_1_back_right_roller_0_link" pos="0.0438515969889343 0.0 -0.01175000000000001">
+                <joint name="robot_1_back_right_slipping_0_joint" type="hinge" pos="0 0 0" axis="-0.006296806022131396 0.0435 -0.02350000000000002" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_back_right_roller_1_link" pos="0.04385159698893431 0.0 0.011749999999999998">
+                <joint name="robot_1_back_right_slipping_1_joint" type="hinge" pos="0 0 0" axis="0.006296806022131382 0.0435 -0.023499999999999997" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_back_right_roller_2_link" pos="0.03210159698893431 0.0 0.032101596988934306">
+                <joint name="robot_1_back_right_slipping_2_joint" type="hinge" pos="0 0 0" axis="0.01720319397786861 0.0435 -0.017203193977868615" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_back_right_roller_3_link" pos="0.011750000000000005 0.0 0.0438515969889343">
+                <joint name="robot_1_back_right_slipping_3_joint" type="hinge" pos="0 0 0" axis="0.023500000000000004 0.0435 -0.006296806022131389" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_back_right_roller_4_link" pos="-0.011749999999999993 0.0 0.04385159698893431">
+                <joint name="robot_1_back_right_slipping_4_joint" type="hinge" pos="0 0 0" axis="0.023499999999999993 0.0435 0.006296806022131382" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_back_right_roller_5_link" pos="-0.0321015969889343 0.0 0.03210159698893432">
+                <joint name="robot_1_back_right_slipping_5_joint" type="hinge" pos="0 0 0" axis="0.01720319397786862 0.0435 0.0172031939778686" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_back_right_roller_6_link" pos="-0.0438515969889343 0.0 0.01175000000000001">
+                <joint name="robot_1_back_right_slipping_6_joint" type="hinge" pos="0 0 0" axis="0.006296806022131389 0.0435 0.02350000000000001" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_back_right_roller_7_link" pos="-0.043851596988934316 0.0 -0.01174999999999999">
+                <joint name="robot_1_back_right_slipping_7_joint" type="hinge" pos="0 0 0" axis="-0.006296806022131375 0.0435 0.023499999999999993" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_back_right_roller_8_link" pos="-0.03210159698893432 0.0 -0.03210159698893429">
+                <joint name="robot_1_back_right_slipping_8_joint" type="hinge" pos="0 0 0" axis="-0.017203193977868604 0.0435 0.017203193977868618" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_back_right_roller_9_link" pos="-0.011750000000000016 0.0 -0.0438515969889343">
+                <joint name="robot_1_back_right_slipping_9_joint" type="hinge" pos="0 0 0" axis="-0.023500000000000014 0.0435 0.006296806022131396" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_back_right_roller_10_link" pos="0.011749999999999981 0.0 -0.043851596988934316">
+                <joint name="robot_1_back_right_slipping_10_joint" type="hinge" pos="0 0 0" axis="-0.023499999999999976 0.0435 -0.006296806022131368" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_back_right_roller_11_link" pos="0.032101596988934285 0.0 -0.032101596988934326">
+                <joint name="robot_1_back_right_slipping_11_joint" type="hinge" pos="0 0 0" axis="-0.017203193977868635 0.0435 -0.01720319397786861" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+        </body>
+
+        <body name="robot_1_back_left_wheel_intermediate_link" pos="-0.2225 0.2045 0">
+            <inertial pos="0 0 0" quat="0.707107 0 0 0.707107" mass="6.5" diaginertia="0.0524193 0.0303095 0.0303095" />
+            <joint name="robot_1_back_left_wheel_rolling_joint" pos="0 0 0" axis="0 1 0" />
+            <geom size="0.120 0.0435" quat="0.707107 0.707107 0 0" type="cylinder" rgba="0.2 0.2 0.2 0.5" contype="1" conaffinity="0" group="3" />
+            <geom type="mesh" mesh="summit_xls_omni_wheel_2" contype="0" conaffinity="0" group="2" rgba="0.2 0.2 0.2 1" />
+
+
+            <body name="robot_1_back_left_roller_0_link" pos="0.04385159698893431 0.0 0.011749999999999998">
+                <joint name="robot_1_back_left_slipping_0_joint" type="hinge" pos="0 0 0" axis="-0.006296806022131382 0.0435 0.023499999999999997" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_back_left_roller_1_link" pos="0.03210159698893431 0.0 0.032101596988934306">
+                <joint name="robot_1_back_left_slipping_1_joint" type="hinge" pos="0 0 0" axis="-0.01720319397786861 0.0435 0.017203193977868615" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_back_left_roller_2_link" pos="0.011750000000000005 0.0 0.0438515969889343">
+                <joint name="robot_1_back_left_slipping_2_joint" type="hinge" pos="0 0 0" axis="-0.023500000000000004 0.0435 0.006296806022131389" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_back_left_roller_3_link" pos="-0.011749999999999993 0.0 0.04385159698893431">
+                <joint name="robot_1_back_left_slipping_3_joint" type="hinge" pos="0 0 0" axis="-0.023499999999999993 0.0435 -0.006296806022131382" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_back_left_roller_4_link" pos="-0.0321015969889343 0.0 0.03210159698893432">
+                <joint name="robot_1_back_left_slipping_4_joint" type="hinge" pos="0 0 0" axis="-0.01720319397786862 0.0435 -0.0172031939778686" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_back_left_roller_5_link" pos="-0.0438515969889343 0.0 0.011750000000000012">
+                <joint name="robot_1_back_left_slipping_5_joint" type="hinge" pos="0 0 0" axis="-0.006296806022131389 0.0435 -0.02350000000000001" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_back_left_roller_6_link" pos="-0.043851596988934316 0.0 -0.011749999999999991">
+                <joint name="robot_1_back_left_slipping_6_joint" type="hinge" pos="0 0 0" axis="0.006296806022131375 0.0435 -0.023499999999999993" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_back_left_roller_7_link" pos="-0.03210159698893432 0.0 -0.03210159698893429">
+                <joint name="robot_1_back_left_slipping_7_joint" type="hinge" pos="0 0 0" axis="0.017203193977868604 0.0435 -0.017203193977868618" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_back_left_roller_8_link" pos="-0.011750000000000014 0.0 -0.0438515969889343">
+                <joint name="robot_1_back_left_slipping_8_joint" type="hinge" pos="0 0 0" axis="0.023500000000000014 0.0435 -0.006296806022131396" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_back_left_roller_9_link" pos="0.01174999999999998 0.0 -0.043851596988934316">
+                <joint name="robot_1_back_left_slipping_9_joint" type="hinge" pos="0 0 0" axis="0.023499999999999976 0.0435 0.006296806022131368" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_back_left_roller_10_link" pos="0.032101596988934285 0.0 -0.032101596988934326">
+                <joint name="robot_1_back_left_slipping_10_joint" type="hinge" pos="0 0 0" axis="0.017203193977868635 0.0435 0.01720319397786861" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+
+            <body name="robot_1_back_left_roller_11_link" pos="0.0438515969889343 0.0 -0.01175000000000001">
+                <joint name="robot_1_back_left_slipping_11_joint" type="hinge" pos="0 0 0" axis="0.006296806022131396 0.0435 0.02350000000000002" damping="0.1" limited="false" actuatorfrclimited="false" />
+                <inertial pos="0 0 0" quat="0.711549 0.711549 0 0 " mass="0.001" diaginertia="0.00001 0.00001 0.00001" />
+                <geom size="0.08" quat="1 0 0 0" type="sphere" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="0" group="3" />
+            </body>
+        </body>
+    
+    <body name="robot_1_fork_base" pos="0.4550 0 0.3920"><inertial pos="0 0 0" mass="0.1" diaginertia="0.0001 0.0001 0.0001" /><joint name="robot_1_fork_base_slide" type="slide" axis="0 0 1" stiffness="500.0" damping="40.0" limited="true" range="-0.025 0.025" /><geom type="box" size="0.0750 0.2000 0.0100" rgba="0.75 0.75 0.75 1" friction="0.05 0.005 0.0001" solref="0.01 1" contype="2" conaffinity="1" /><site name="robot_1_base_site" pos="0 0 0.0100" /></body><body name="robot_1_fork_wall" pos="0.3800 0 0.4320"><inertial pos="0 0 0" mass="0.1" diaginertia="0.0001 0.0001 0.0001" /><joint name="robot_1_fork_wall_slide" type="slide" axis="1 0 0" stiffness="500.0" damping="40.0" limited="true" range="-0.025 0.025" /><geom type="box" size="0.0100 0.2000 0.0400" rgba="0.60 0.60 0.60 1" friction="0.05 0.005 0.0001" solref="0.01 1" contype="2" conaffinity="1" /><site name="robot_1_wall_site" pos="0.0100 0 0" /></body></body> <!-- old friction coefs: friction="0.5 0.005 0.0001" for both -->
+
+    </body>
+
+
+
+    <!-- Payload -->
+    <body name="payload" pos="0.0000 0.0000 0.6450">
+      <freejoint name="payload_joint"/>
+      <inertial pos="0 0 0" mass="2.00"
+                diaginertia="0.144600 0.144600 0.270000"/>
+      <geom name="payload_geom" type="box"
+            size="0.4500 0.4500 0.1200"
+            rgba="0.85 0.55 0.20 0.9" friction="0.05 0.005 0.0001"/> <!-- old friction coefs: friction="0.5 0.005 0.0001" -->
+    </body>
+  </worldbody>
+
+  <actuator>
+<motor name="robot_0_front_right_wheel_rolling_joint" joint="robot_0_front_right_wheel_rolling_joint" ctrlrange="-10 10" />
+        
+<motor name="robot_0_front_left_wheel_rolling_joint" joint="robot_0_front_left_wheel_rolling_joint" ctrlrange="-10 10" />
+        
+<motor name="robot_0_back_right_wheel_rolling_joint" joint="robot_0_back_right_wheel_rolling_joint" ctrlrange="-10 10" />
+        
+<motor name="robot_0_back_left_wheel_rolling_joint" joint="robot_0_back_left_wheel_rolling_joint" ctrlrange="-10 10" />
+    
+<motor name="robot_1_front_right_wheel_rolling_joint" joint="robot_1_front_right_wheel_rolling_joint" ctrlrange="-10 10" />
+        
+<motor name="robot_1_front_left_wheel_rolling_joint" joint="robot_1_front_left_wheel_rolling_joint" ctrlrange="-10 10" />
+        
+<motor name="robot_1_back_right_wheel_rolling_joint" joint="robot_1_back_right_wheel_rolling_joint" ctrlrange="-10 10" />
+        
+<motor name="robot_1_back_left_wheel_rolling_joint" joint="robot_1_back_left_wheel_rolling_joint" ctrlrange="-10 10" />
+    
+  </actuator>
+
+  <sensor>
+    <!-- forces read via data.cfrc_ext; no sensors required -->
+  </sensor>
+</mujoco>
