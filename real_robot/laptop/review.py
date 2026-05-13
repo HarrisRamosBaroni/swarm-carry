@@ -414,20 +414,18 @@ class ReviewerApp:
                 continue
             self.ax_speed.plot(tt - t0, sp, color=_color_for(rid), linewidth=0.9)
 
-        # force (total per robot)
+        # force: one line per (robot, axis). horizontal = solid, vertical = dashed.
+        _LINESTYLE = {"horizontal": "-", "vertical": "--"}
         for rid in sorted(rec.forces):
-            ts, totals, by_label = rec.forces[rid]
-            if len(ts) == 0:
-                continue
-            self.ax_force.plot(ts - t0, totals, color=_color_for(rid),
-                               linewidth=0.9, label=f"{_label_for(rid)} Σ")
+            _ts, _totals, by_label = rec.forces[rid]
             for lab, arr in by_label.items():
                 if len(arr) == 0:
                     continue
-                tts = arr[:, 0]
-                vals = arr[:, 1]
-                self.ax_force.plot(tts - t0, vals, color=_color_for(rid),
-                                   linewidth=0.5, alpha=0.4)
+                self.ax_force.plot(arr[:, 0] - t0, arr[:, 1],
+                                   color=_color_for(rid),
+                                   linestyle=_LINESTYLE.get(lab, ":"),
+                                   linewidth=0.9,
+                                   label=f"{_label_for(rid)} {lab}")
         if any(len(rec.forces[r][0]) for r in rec.forces):
             self.ax_force.legend(loc="upper right", fontsize=7, ncol=4)
 
