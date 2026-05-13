@@ -78,7 +78,7 @@ def run_single(
     visualise: bool = False,
     sim_speed: float = 1.0,
 ) -> dict:
-    goal = (distance, 0.0, 0.0)
+    goal = (distance, 0.0, 3.14)
     payload_size = (PAYLOAD_HX, PAYLOAD_HY, PAYLOAD_HZ)
     formation = face_contact_formation(n_robots,
                                        payload_hx=PAYLOAD_HX,
@@ -106,8 +106,8 @@ def run_single(
             "horizon": horizon,
             "v_max": v_max,
             "sigma_x": 0.5,
-            "sigma_u": 0.3,
-            "sigma_anchor": 0.01,
+            "sigma_u": 3, #0.3
+            "sigma_anchor": 0.01, #0.01
             "sigma_r2r": 0.05,
             "sigma_pull_in": 0.3,
             "sigma_consensus": 0.1,
@@ -277,6 +277,7 @@ def main():
 
     for idx, n in enumerate(n_values):
         print(f"Running n={n} ...", flush=True)
+        start_time = time.time()
         result = run_single(
             n_robots=n,
             distance=args.distance,
@@ -302,6 +303,7 @@ def main():
             f"  gbp_iters_mean={result['gbp_iters_mean']:.1f}"
             f"  msgs={result['messages_sent']}"
             f"  (dropped={result['messages_dropped']})"
+            f"  time_taken={time.time() - start_time}"
         )
 
     # Summary table
