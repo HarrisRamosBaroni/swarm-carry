@@ -502,8 +502,16 @@ class DRCapDistributedController(BaseController):
 
         # Read centroid control from my own graph (deploy) or leader robot 0
         # (sim). All local copies converge to similar values once GBP settles.
+
         source_id = self.my_id if self.my_id is not None else 0
+
+        #======================================
+        #OLD way: pick controls from leader
+        #============================================
+
         U_c = self.local_graphs[source_id].first_control()
+        print('U_c shape:',U_c)
+
         speed = np.hypot(U_c[0], U_c[1])
         if speed > self._v_max:
             U_c[0] *= self._v_max / speed
@@ -511,7 +519,46 @@ class DRCapDistributedController(BaseController):
         U_c[2] = np.clip(U_c[2], -self._omega_max, self._omega_max)
 
         self._set_solve_time(time.perf_counter() - t0)
-        return self._robot_velocities(U_c, centroid_pose[2])
+        output_controls = self._robot_velocities(U_c, centroid_pose[2])
+
+        # print('LEADER CONTROLS:')
+        # print(output_controls)
+
+        #=================================================
+        #NEW way:
+        #=================================================
+
+        # U_c_total = np.zeros_like(self.local_graphs[0].first_control())
+
+        all_output_controls=[]
+
+        for i in range(len(robot_states)): #for each robot
+            U_c_local = self.local_graphs[i].first_control()
+            # U_c_total[i] = U_c_local[i]
+
+            speed = np.hypot(U_c_local[0], U_c_local[1])
+            if speed > self._v_max:
+                U_c_local[0] *= self._v_max / speed
+                U_c_local[1] *= self._v_max / speed
+            U_c_local[2] = np.clip(U_c_local[2], -self._omega_max, self._omega_max)
+
+            # self._set_solve_time(time.perf_counter() - t0)
+            local_output_controls = self._robot_velocities(U_c_local, centroid_pose[2])
+            all_output_controls.append(local_output_controls)
+
+            # print(f'robot {i} controls:')
+            # print(local_output_controls)
+
+
+        # ------------ total controls -----------------------------
+        final_output_controls = np.zeros((len(robot_states), 2))
+        for i in range(len(robot_states)): #for each robot
+            final_output_controls[i] = all_output_controls[i][i].copy()
+
+        # print(f'final controls:')
+        # print(final_output_controls)
+
+        return final_output_controls
 
     # --- Rigid-body velocity distribution ----------------------------------
 

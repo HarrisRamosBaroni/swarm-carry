@@ -79,7 +79,8 @@ def run_single(
     visualise: bool = False,
     sim_speed: float = 1.0,
 ) -> dict:
-    goal = (distance, 0.0, 0.0)
+    goal = (distance, 3.0, 0.0)
+    goal = (0.5, -3.0, 0.0) 
     payload_size = (PAYLOAD_HX, PAYLOAD_HY, PAYLOAD_HZ)
     formation = face_contact_formation(n_robots,
                                        payload_hx=PAYLOAD_HX,
@@ -95,6 +96,7 @@ def run_single(
         vel_feedback=True,
         with_carriage=True,
         dt_control=0.05,
+        scene_xml="swarmlib/simulation/temp_scene.xml"
     )
 
     backend = build_backend(backend_kind, n_robots, topology_kind, dropout, seed=42)
@@ -154,8 +156,19 @@ def run_single(
             dt=0.05,
             forces=forces,
         )
+
+        #TODO set controls to 0 if too low
+        cmd_threshold = 0.1
+
+        controls[np.abs(controls) < cmd_threshold] = 0
+
+        # print('controls generated:',controls)
+
+        # print('generated controls:',controls)
         solve_times.append(controller.get_solve_time())
         gbp_iters_log.append(controller.get_gbp_iters())
+
+        # print('controls generated:', controls)
 
         obs = env.step(controls)
 
@@ -272,6 +285,7 @@ def main():
     all_results = []
 
     for idx, n in enumerate(n_values):
+        start_time = time.time()
         print(f"Running n={n} ...", flush=True)
         result = run_single(
             n_robots=n,
@@ -298,6 +312,7 @@ def main():
             f"  gbp_iters_mean={result['gbp_iters_mean']:.1f}"
             f"  msgs={result['messages_sent']}"
             f"  (dropped={result['messages_dropped']})"
+            f"  time_taken={time.time() - start_time}"
         )
 
     # Summary table
