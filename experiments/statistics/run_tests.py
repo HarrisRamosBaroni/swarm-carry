@@ -331,10 +331,14 @@ for {n_robots} robots formation, using size {recommended_payload_xy_size} instea
         input("  Viewer open — adjust camera, then press Enter to start...")
 
     goal_arr = np.array(goal)
+    formation_arr = np.array([(f[0], f[1]) for f in formation])  # (n, 2) body-frame offsets
     payload_trajectory = []
     solve_times = []
     gbp_iters_log = []
     torque_log = []
+    formation_error_log = []   # mean distance from nominal slot per step
+    wall_force_log = []        # (n,) per step
+    base_force_log = []        # (n,) per step
     TORQUE_LIMIT = 10.0
 
     wheel_act_ids = env._wheel_act_ids
@@ -357,6 +361,22 @@ for {n_robots} robots formation, using size {recommended_payload_xy_size} instea
         #print('!!forces passed to controller', forces)
 
         payload_trajectory.append(payload[:3].tolist())
+
+        # Formation error: distance of each robot from nominal slot in payload frame
+        cx, cy, ctheta = payload[:3]
+        cos_t, sin_t = np.cos(ctheta), np.sin(ctheta)
+        R_pay = np.array([[cos_t, -sin_t], [sin_t, cos_t]])
+        expected_pos = (R_pay @ formation_arr.T).T + np.array([cx, cy])
+        actual_pos = robots[:, :2]
+        formation_error_log.append(float(np.mean(np.linalg.norm(actual_pos - expected_pos, axis=1))))
+
+        # Contact force logging
+        wf = obs.get("wall_forces")
+        bf = obs.get("base_forces")
+        if wf is not None:
+            wall_force_log.append(wf.tolist() if hasattr(wf, "tolist") else list(wf))
+        if bf is not None:
+            base_force_log.append(bf.tolist() if hasattr(bf, "tolist") else list(bf))
 
         if ChosenController is ForceCentralisedControllerCVel: #these two have a different way to pass forces for whatever reason
 
@@ -458,36 +478,78 @@ for {n_robots} robots formation, using size {recommended_payload_xy_size} instea
     sat_frac = float(saturated.mean())
     peak_torque = float(np.abs(torques).max())
 
+    # Path length and ratio
+    steps_xy = traj[:, :2]
+    path_length = float(np.sum(np.linalg.norm(np.diff(steps_xy, axis=0), axis=1)))
+    straight_dist = float(np.linalg.norm(goal_arr[:2] - steps_xy[0]))
+    path_length_ratio = path_length / straight_dist if straight_dist > 1e-6 else 1.0
+
+    # Formation error aggregation
+    fe_arr = np.array(formation_error_log) if formation_error_log else np.array([0.0])
+
+    # Contact force aggregation
+    if wall_force_log:
+        wf_arr = np.array(wall_force_log)   # (T, n)
+        wall_force_mean   = float(np.mean(wf_arr))
+        wall_force_std    = float(np.std(wf_arr))
+        wall_force_min    = float(np.min(wf_arr))
+        # imbalance: std across robots per step, then time-averaged
+        wall_force_imbalance = float(np.mean(np.std(wf_arr, axis=1)))
+    else:
+        wf_arr = None
+        wall_force_mean = wall_force_std = wall_force_min = wall_force_imbalance = float("nan")
+
+    if base_force_log:
+        bf_arr = np.array(base_force_log)
+        base_force_mean = float(np.mean(bf_arr))
+        base_force_std  = float(np.std(bf_arr))
+    else:
+        bf_arr = None
+        base_force_mean = base_force_std = float("nan")
+
     comm_stats = backend.get_stats()
 
     env.close()
 
     return {
-        "n_robots":           n_robots,
-        "backend":            backend_kind,
-        "topology":           topology_kind,
-        "dropout":            dropout,
-        "success":            success,
-        "sim_time":           float(env.time),
-        "wall_time_s":        wall_elapsed,
-        "final_error_m":      final_error,
-        "mean_deviation_m":   deviation,
-        "solve_time_mean_ms": float(np.mean(solve_times) * 1e3),
-        "solve_time_std_ms":  float(np.std(solve_times)  * 1e3),
-        "solve_time_max_ms":  float(np.max(solve_times)  * 1e3),
-        "gbp_iters_mean":     float(np.mean(gbp_iters_log)),
-        "gbp_iters_max":      int(np.max(gbp_iters_log)) if ChosenController in DecentralisedControllers else np.nan,
-        "messages_sent":      int(comm_stats.get("messages_sent", 0)),
-        "messages_dropped":   int(comm_stats.get("messages_dropped", 0)),
-        "n_steps":            len(solve_times),
-        "sat_frac":           sat_frac,
-        "peak_torque_Nm":     peak_torque,
-        "trajectory":         traj.tolist(),
-        "solve_times_ms":     (np.array(solve_times) * 1e3).tolist(),
-        "gbp_iters":          list(map(int, gbp_iters_log)),
-        "payload_mass_kg":    payload_mass,
-        "goal":               goal_arr.tolist(),
-        "torques_Nm":         torques.tolist(),
+        "n_robots":               n_robots,
+        "backend":                backend_kind,
+        "topology":               topology_kind,
+        "dropout":                dropout,
+        "success":                success,
+        "sim_time":               float(env.time),
+        "wall_time_s":            wall_elapsed,
+        "final_error_m":          final_error,
+        "mean_deviation_m":       deviation,
+        "path_length_m":          path_length,
+        "path_length_ratio":      path_length_ratio,
+        "formation_error_mean_m": float(np.mean(fe_arr)),
+        "formation_error_max_m":  float(np.max(fe_arr)),
+        "wall_force_mean_N":      wall_force_mean,
+        "wall_force_std_N":       wall_force_std,
+        "wall_force_min_N":       wall_force_min,
+        "wall_force_imbalance_N": wall_force_imbalance,
+        "base_force_mean_N":      base_force_mean,
+        "base_force_std_N":       base_force_std,
+        "solve_time_mean_ms":     float(np.mean(solve_times) * 1e3),
+        "solve_time_std_ms":      float(np.std(solve_times)  * 1e3),
+        "solve_time_max_ms":      float(np.max(solve_times)  * 1e3),
+        "gbp_iters_mean":         float(np.mean(gbp_iters_log)) if gbp_iters_log else float("nan"),
+        "gbp_iters_max":          int(np.max(gbp_iters_log)) if ChosenController in DecentralisedControllers and gbp_iters_log else None,
+        "messages_sent":          int(comm_stats.get("messages_sent", 0)),
+        "messages_dropped":       int(comm_stats.get("messages_dropped", 0)),
+        "n_steps":                len(solve_times),
+        "sat_frac":               sat_frac,
+        "peak_torque_Nm":         peak_torque,
+        "trajectory":             traj.tolist(),
+        "solve_times_ms":         (np.array(solve_times) * 1e3).tolist(),
+        "gbp_iters":              list(map(int, gbp_iters_log)),
+        "payload_mass_kg":        payload_mass,
+        "goal":                   goal_arr.tolist(),
+        "torques_Nm":             torques.tolist(),
+        "wall_forces_ts":         wf_arr.tolist() if wf_arr is not None else [],
+        "base_forces_ts":         bf_arr.tolist() if bf_arr is not None else [],
+        "formation_errors_ts":    fe_arr.tolist(),
     }
 
 
@@ -887,7 +949,14 @@ def main():
     plot_time_vs_dropout(gbp_results_plotting)
 
     # plot_results(all_results_plotting)
-    
+
+    out_path = Path(__file__).parent / f"results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    out_path.write_text(json.dumps({
+        "timestamp": datetime.now().isoformat(),
+        "results":   all_results,
+    }, indent=2))
+    print(f"\nResults saved → {out_path}")
+
 
 if __name__ == "__main__":
     main()
