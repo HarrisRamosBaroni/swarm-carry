@@ -244,8 +244,9 @@ class ReviewerApp:
         self.ax_health.axis("off")
 
         # bottom widgets
-        self.ax_slider_in = self.fig.add_axes([0.08, 0.13, 0.55, 0.025])
-        self.ax_slider_out = self.fig.add_axes([0.08, 0.09, 0.55, 0.025])
+        self.ax_slider_in = self.fig.add_axes([0.08, 0.155, 0.55, 0.020])
+        self.ax_slider_out = self.fig.add_axes([0.08, 0.125, 0.55, 0.020])
+        self.ax_slider_tol = self.fig.add_axes([0.08, 0.095, 0.55, 0.020])
 
         self.ax_name = self.fig.add_axes([0.10, 0.04, 0.20, 0.035])
         self.ax_notes = self.fig.add_axes([0.36, 0.04, 0.28, 0.035])
@@ -259,8 +260,10 @@ class ReviewerApp:
     def _connect_widgets(self):
         self.slider_in = Slider(self.ax_slider_in, "trim in", 0.0, 1.0, valinit=0.0)
         self.slider_out = Slider(self.ax_slider_out, "trim out", 0.0, 1.0, valinit=1.0)
+        self.slider_tol = Slider(self.ax_slider_tol, "goal tol (m)", 0.01, 1.0, valinit=0.2)
         self.slider_in.on_changed(self._on_slider)
         self.slider_out.on_changed(self._on_slider)
+        self.slider_tol.on_changed(lambda _v: self._redraw_xy())
 
         self.tb_name = TextBox(self.ax_name, "name ", initial="")
         self.tb_notes = TextBox(self.ax_notes, "notes ", initial="")
@@ -311,17 +314,75 @@ class ReviewerApp:
             s.ax.set_xlim(s.valmin, s.valmax)
         self.slider_in.set_val(0.0)
         self.slider_out.set_val(max(dur, 1e-3))
+        # seed tol slider from the last goal row that carried a tol field
+        tol_seed = 0.2
+        for _, topic, data in self.rec.rows:
+            if topic == "goal" and isinstance(data, dict) and "tol" in data:
+                tol_seed = float(data["tol"])
+        self.slider_tol.set_val(tol_seed)
 
         self._redraw()
 
     # ---- drawing ----
-    def _redraw(self):
-        for ax in (self.ax_xy, *self.ts_axes):
-            ax.clear()
-            ax.grid(alpha=0.3)
+    def _redraw_xy(self):
+        """Redraw only the XY map — respects current trim window and tol slider."""
+        rec = self.rec
+        if rec is None:
+            return
+        self.ax_xy.clear()
+        self.ax_xy.grid(alpha=0.3)
         self.ax_xy.set_aspect("equal")
         self.ax_xy.set_xlabel("x (m)")
         self.ax_xy.set_ylabel("y (m)")
+
+        t0 = rec.t0
+        t_in_abs = t0 + self.slider_in.val
+        t_out_abs = t0 + self.slider_out.val
+        tol = float(self.slider_tol.val)
+
+        from matplotlib.lines import Line2D
+        legend_handles: list = []
+        for rid in sorted(rec.poses):
+            ts, xs, ys, _ = rec.poses[rid]
+            if len(ts) == 0:
+                continue
+            mask = (ts >= t_in_abs) & (ts <= t_out_abs)
+            if not mask.any():
+                continue
+            xs_m, ys_m, ts_m = xs[mask], ys[mask], ts[mask]
+            color = _color_for(rid)
+            self.ax_xy.plot(xs_m, ys_m, "-", color=color, alpha=0.5, linewidth=1.2)
+            self.ax_xy.scatter(xs_m, ys_m, c=ts_m - t0, cmap="viridis", s=4)
+            self.ax_xy.plot(xs_m[0], ys_m[0], "o", color=color, ms=8, mec="black")
+            self.ax_xy.plot(xs_m[-1], ys_m[-1], "s", color=color, ms=8, mec="black")
+            legend_handles.append(Line2D([0], [0], color=color, marker="o",
+                                         linewidth=2, label=_label_for(rid)))
+
+        # goals within trim window — latest solid, earlier faded
+        goals_in = [(t, x, y, th) for (t, x, y, th) in rec.goals
+                    if t_in_abs <= t <= t_out_abs and x is not None and y is not None]
+        for i, (t, x, y, _th) in enumerate(goals_in):
+            is_last = (i == len(goals_in) - 1)
+            alpha_pt = 0.95 if is_last else 0.35
+            alpha_ring = 0.7 if is_last else 0.25
+            self.ax_xy.plot(x, y, marker="*", color="green", ms=14,
+                            mec="black", alpha=alpha_pt, zorder=5)
+            ring = plt.Circle((x, y), tol, fill=False, linestyle="--",
+                              edgecolor="green", linewidth=1.2, alpha=alpha_ring)
+            self.ax_xy.add_patch(ring)
+        if goals_in:
+            legend_handles.append(Line2D([0], [0], marker="*", color="green",
+                                         mec="black", linewidth=0, markersize=10,
+                                         label=f"goal (tol={tol:.2f}m)"))
+
+        if legend_handles:
+            self.ax_xy.legend(handles=legend_handles, loc="best", fontsize=8)
+        self.fig.canvas.draw_idle()
+
+    def _redraw(self):
+        for ax in self.ts_axes:
+            ax.clear()
+            ax.grid(alpha=0.3)
         for ax, lab in [(self.ax_theta, "θ (rad)"),
                         (self.ax_speed, "|v| pose (m/s)"),
                         (self.ax_force, "force"),
@@ -334,18 +395,7 @@ class ReviewerApp:
             return
         t0 = rec.t0
 
-        # XY scatter colored by time
-        for rid in sorted(rec.poses):
-            ts, xs, ys, _ = rec.poses[rid]
-            if len(ts) == 0:
-                continue
-            color = _color_for(rid)
-            self.ax_xy.plot(xs, ys, "-", color=color, alpha=0.25, linewidth=1)
-            self.ax_xy.scatter(xs, ys, c=ts - t0, cmap="viridis", s=4,
-                               label=_label_for(rid))
-            self.ax_xy.plot(xs[0], ys[0], "o", color=color, ms=8, mec="black")
-            self.ax_xy.plot(xs[-1], ys[-1], "s", color=color, ms=8, mec="black")
-        self.ax_xy.legend(loc="best", fontsize=8)
+        self._redraw_xy()
 
         # theta
         for rid in sorted(rec.poses):
@@ -442,7 +492,7 @@ class ReviewerApp:
             ln.set_xdata([self.slider_in.val, self.slider_in.val])
         for ln in self.out_lines:
             ln.set_xdata([self.slider_out.val, self.slider_out.val])
-        self.fig.canvas.draw_idle()
+        self._redraw_xy()
 
     # ---- actions ----
     def _save_meta(self):
