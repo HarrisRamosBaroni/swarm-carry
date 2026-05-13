@@ -510,7 +510,7 @@ class DRCapDistributedController(BaseController):
         #============================================
 
         U_c = self.local_graphs[source_id].first_control()
-        print('U_c shape:',U_c)
+        # print('U_c shape:',U_c)
 
         speed = np.hypot(U_c[0], U_c[1])
         if speed > self._v_max:

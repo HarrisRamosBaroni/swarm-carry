@@ -177,7 +177,10 @@ def face_contact_formation_many_robots(
 
     robots_per_face = [base] * 4
     for i in range(remainder):
-        robots_per_face[i] += 1
+        if i < 2: #if 2 robots, place them on either side of payload
+            robots_per_face[i*2] += 1
+        else:
+            robots_per_face[(i-2)*2+1] += 1
 
     # --- optionally grow payload ---
     max_x_face = max(robots_per_face[1], robots_per_face[3])  # +/- y faces
