@@ -44,6 +44,12 @@ TABLE_DIR = FINDINGS_ROOT / "tables"
 NOTE_DIR  = FINDINGS_ROOT / "notes"
 
 # Colour / marker scheme — consistent across all figures
+DECENTRALISED = {
+    "DRCapDistributedController",
+    "ForceDistributedController",
+    "ContactHealthDistributedController",
+}
+
 STYLE = {
     "MRCapController":                    {"color": "#1f77b4", "marker": "o",  "ls": "-"},
     "ContactHealthController":            {"color": "#d62728", "marker": "s",  "ls": "-"},
@@ -124,7 +130,7 @@ def save_note_placeholder(name, content=""):
 # ---------------------------------------------------------------------------
 
 def fig_metric_vs_n(results, metric, ylabel, title, fname, *, hline=None, hline_label=None,
-                    scalability_only=True):
+                    scalability_only=True, yscale="linear"):
     subset = scalability_subset(results) if scalability_only else results
     ctrls = controllers_in(subset)
     fig, ax = plt.subplots(figsize=(5.5, 3.8))
@@ -140,8 +146,9 @@ def fig_metric_vs_n(results, metric, ylabel, title, fname, *, hline=None, hline_
     ax.set_xlabel("Number of robots $n$")
     ax.set_ylabel(ylabel)
     ax.set_title(title)
+    ax.set_yscale(yscale)
     ax.legend(loc="best")
-    ax.grid(True, alpha=0.3)
+    ax.grid(True, alpha=0.3, which="both" if yscale == "log" else "major")
     save_fig(fig, fname)
     save_note_placeholder(fname)
 
@@ -150,6 +157,59 @@ def fig_solve_time(results):
     fig_metric_vs_n(
         results, "solve_time_mean_ms", "Solve time (ms)",
         "Solve time vs. team size", "01_solve_time_vs_nrobots.pdf",
+    )
+    fig_metric_vs_n(
+        results, "solve_time_mean_ms", "Solve time (ms, log scale)",
+        "Solve time vs. team size (log scale)", "01b_solve_time_vs_nrobots_log.pdf",
+        yscale="log",
+    )
+
+
+def fig_solve_time_distributed_bounds(results):
+    """Solve time with parallel bounds for distributed controllers.
+
+    Centralised controllers: direct measurement (solid line).
+    Distributed controllers: shaded region between solve_time/n (parallel lower
+    bound, assumes perfect load balance and zero comms overhead) and solve_time
+    (sequential upper bound, single-machine cost).  The lower-bound line is
+    labelled; the upper-bound edge of the shading is unlabelled to avoid clutter.
+    """
+    subset = scalability_subset(results)
+    ctrls = controllers_in(subset)
+    fig, ax = plt.subplots(figsize=(5.5, 3.8))
+
+    for ctrl in ctrls:
+        ns, vals = mean_metric_vs_n(subset, "solve_time_mean_ms", ctrl)
+        st = style(ctrl)
+        if ctrl in DECENTRALISED:
+            lb = vals / ns          # lower bound: per-robot parallel time
+            ub = vals               # upper bound: sequential single-machine time
+            ax.fill_between(ns, lb, ub, color=st["color"], alpha=0.15)
+            ax.plot(ns, lb, color=st["color"], marker=st["marker"],
+                    linestyle=st["ls"], linewidth=1.5,
+                    label=f"{label(ctrl)} (parallel lb)")
+            ax.plot(ns, ub, color=st["color"], marker=st["marker"],
+                    linestyle=":", linewidth=0.8, alpha=0.5,
+                    label=f"{label(ctrl)} (sequential)")
+        else:
+            ax.plot(ns, vals, color=st["color"], marker=st["marker"],
+                    linestyle=st["ls"], linewidth=1.5, label=label(ctrl))
+
+    all_ns = sorted(set(r["n_robots"] for r in subset))
+    ax.set_xticks(all_ns)
+    ax.set_xlabel("Number of robots $n$")
+    ax.set_ylabel("Solve time (ms, log scale)")
+    ax.set_title("Solve time vs. team size\n"
+                 "(distributed: shaded = parallel lb $\\ldots$ sequential ub)")
+    ax.set_yscale("log")
+    ax.legend(loc="upper left", fontsize=7)
+    ax.grid(True, alpha=0.3, which="both")
+    save_fig(fig, "01c_solve_time_distributed_bounds.pdf")
+    save_note_placeholder(
+        "01c_solve_time_distributed_bounds.pdf",
+        "Parallel lower bound assumes perfect load balance and zero comms overhead. "
+        "Upper bound is sequential single-machine cost (loose at large n). "
+        "True distributed wall time lies within the shaded region.",
     )
 
 
@@ -516,6 +576,7 @@ def main():
 
     print("Generating figures...")
     fig_solve_time(results)
+    fig_solve_time_distributed_bounds(results)
     fig_formation_error(results)
     fig_wall_force(results, F_wall_star)
     fig_success_rate(results)
