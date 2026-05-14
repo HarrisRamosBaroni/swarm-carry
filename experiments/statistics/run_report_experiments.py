@@ -24,6 +24,7 @@ from swarmlib.controllers import (
     DRCapDistributedController,
     ForceCentralisedControllerCVel,
     ForcelessCentralisedControllerCVel,
+    ForceDistributedController,
     ContactHealthController,
     ContactHealthDistributedController,
 )
@@ -35,16 +36,20 @@ from swarmlib.controllers import (
 REPORT_CONTROLLERS = [
     MRCapController,
     ContactHealthController,
+    ForceCentralisedControllerCVel,
     ForcelessCentralisedControllerCVel,
     DRCapDistributedController,
+    ForceDistributedController,
     ContactHealthDistributedController,
 ]
 
 LABEL = {
     "MRCapController":                    "MR.CAP",
     "ContactHealthController":            "ContactHealth (central.)",
+    "ForceCentralisedControllerCVel":     "Force (central.)",
     "ForcelessCentralisedControllerCVel": "Forceless (central.)",
     "DRCapDistributedController":         "DR.CAP (distr.)",
+    "ForceDistributedController":         "Force (distr.)",
     "ContactHealthDistributedController": "ContactHealth (distr.)",
 }
 
@@ -132,7 +137,16 @@ def main():
                         help="Max wall-clock seconds per run before aborting (default: 300)")
     parser.add_argument("--fast",          action="store_true",
                         help="Smoke-test mode: 2 controllers × 2 robot counts, 20 s timeout, no dropout")
+    parser.add_argument("--controllers",   default=None,
+                        help="Comma-separated controller class names to run (default: all). "
+                             "E.g. ForceCentralisedControllerCVel,ForceDistributedController")
+    parser.add_argument("--merge",         default=None, metavar="JSON",
+                        help="Existing results JSON to merge new runs into. "
+                             "New results are appended; output replaces the file in-place.")
     args = parser.parse_args()
+
+    # Build controller name → class lookup
+    _all_ctrl = {c.__name__: c for c in REPORT_CONTROLLERS}
 
     if args.fast:
         controllers     = [MRCapController, ContactHealthController]
@@ -148,8 +162,24 @@ def main():
         wall_time_limit = args.wall_time_limit
         skip_dropout    = args.skip_dropout
 
+    if args.controllers:
+        names = [n.strip() for n in args.controllers.split(",")]
+        unknown = [n for n in names if n not in _all_ctrl]
+        if unknown:
+            raise SystemExit(f"Unknown controller(s): {unknown}\nKnown: {list(_all_ctrl)}")
+        controllers = [_all_ctrl[n] for n in names]
+        print(f"Running subset: {[c.__name__ for c in controllers]}")
+
     findings = _resolve_findings_dir()
-    all_results = []
+
+    # Load existing results if merging
+    if args.merge:
+        merge_path = Path(args.merge)
+        existing = json.loads(merge_path.read_text())
+        all_results = existing["results"]
+        print(f"Loaded {len(all_results)} existing runs from {merge_path}")
+    else:
+        all_results = []
 
     # ------------------------------------------------------------------
     # 1. Scalability sweep — all controllers × n_robots
@@ -189,14 +219,17 @@ def main():
     # ------------------------------------------------------------------
     # Save
     # ------------------------------------------------------------------
-    out_path = findings / "data" / f"report_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    if args.merge:
+        out_path = Path(args.merge)
+    else:
+        out_path = findings / "data" / f"report_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     out_path.write_text(json.dumps({
         "timestamp":   datetime.now().isoformat(),
         "F_wall_star": F_WALL_STAR,
         "results":     all_results,
     }, indent=2))
     print(f"\nSaved {len(all_results)} runs → {out_path}")
-    print("Next step: python generate_findings.py --results", out_path)
+    print("Next step: python3 generate_findings.py --results", out_path)
 
 
 if __name__ == "__main__":
