@@ -160,7 +160,7 @@ def run_single(
     ChosenController,
     visualise: bool = False,
     sim_speed: float = 1.0,
-    
+    wall_time_limit: float = None,
 ) -> dict:
     goal = (np.sqrt(distance**2/2) , np.sqrt(distance**2/2) , 0.0) #move in diagonal, to a goal <distance>m away
     payload_size = (PAYLOAD_HX, PAYLOAD_HY, PAYLOAD_HZ)
@@ -284,7 +284,7 @@ for {n_robots} robots formation, using size {recommended_payload_xy_size} instea
                     "horizon":  horizon, "v_max": v_max,
                     "sigma_x":  0.5, "sigma_u": 0.3, "sigma_anchor": 0.01,
                     "F_wall_star":      10.0,
-                    "payload_mass_nom": 2.0,
+                    "payload_mass_nom": payload_mass,
                     "alpha_sigma_u":    0.1,
                     "beta_recovery":    0.005,
                     "use_weighted_anchor":    True,
@@ -453,6 +453,10 @@ for {n_robots} robots formation, using size {recommended_payload_xy_size} instea
         dist_to_goal = float(np.linalg.norm(payload[:2] - goal_arr[:2]))
         if dist_to_goal < success_threshold:
             success = True
+            break
+
+        if wall_time_limit is not None and (time.perf_counter() - wall_start) > wall_time_limit:
+            print(f"  [WALL TIMEOUT] {wall_time_limit:.0f}s wall-time limit reached", flush=True)
             break
 
     wall_elapsed = time.perf_counter() - wall_start
