@@ -378,6 +378,7 @@ class ReviewerApp:
         if legend_handles:
             self.ax_xy.legend(handles=legend_handles, loc="best", fontsize=8)
         self.fig.canvas.draw_idle()
+        self.fig.savefig('temp.pdf')
 
     def _redraw(self):
         for ax in self.ts_axes:
