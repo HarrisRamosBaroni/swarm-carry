@@ -124,7 +124,21 @@ def main():
     parser.add_argument("--gbp-max-iters", type=int,   default=30)
     parser.add_argument("--skip-dropout",  action="store_true",
                         help="Skip the dropout sweep (saves ~40 min)")
+    parser.add_argument("--fast",          action="store_true",
+                        help="Smoke-test mode: 2 controllers × 2 robot counts, 20 s timeout, no dropout")
     args = parser.parse_args()
+
+    if args.fast:
+        controllers  = [MRCapController, ContactHealthController]
+        n_robots_list = [2, 4]
+        max_time     = 20.0
+        skip_dropout = True
+        print("*** FAST MODE: 4 runs, 20 s timeout — smoke test only ***")
+    else:
+        controllers  = REPORT_CONTROLLERS
+        n_robots_list = N_ROBOTS_SWEEP
+        max_time     = args.max_time
+        skip_dropout = args.skip_dropout
 
     findings = _resolve_findings_dir()
     all_results = []
@@ -133,12 +147,12 @@ def main():
     # 1. Scalability sweep — all controllers × n_robots
     # ------------------------------------------------------------------
     print("\n=== SCALABILITY SWEEP (n_robots) ===")
-    for ctrl_cls in REPORT_CONTROLLERS:
-        for n in N_ROBOTS_SWEEP:
+    for ctrl_cls in controllers:
+        for n in n_robots_list:
             r = run_one(
                 ctrl_cls.__name__, ctrl_cls, n,
                 DEFAULT_DISTANCE, DEFAULT_HORIZON, DEFAULT_DROPOUT,
-                args.max_time, args.v_max, args.payload_mass,
+                max_time, args.v_max, args.payload_mass,
                 args.backend, args.topology, args.gbp_max_iters,
             )
             r["experiment"] = "scalability"
@@ -147,16 +161,16 @@ def main():
     # ------------------------------------------------------------------
     # 2. Dropout robustness — decentralised controllers only
     # ------------------------------------------------------------------
-    if not args.skip_dropout:
+    if not skip_dropout:
         print("\n=== DROPOUT SWEEP ===")
-        decentralised = [c for c in REPORT_CONTROLLERS if c in DecentralisedControllers]
+        decentralised = [c for c in controllers if c in DecentralisedControllers]
         for ctrl_cls in decentralised:
             for n in DROPOUT_N:
                 for do in DROPOUT_SWEEP:
                     r = run_one(
                         ctrl_cls.__name__, ctrl_cls, n,
                         DEFAULT_DISTANCE, DEFAULT_HORIZON, do,
-                        args.max_time, args.v_max, args.payload_mass,
+                        max_time, args.v_max, args.payload_mass,
                         "async", args.topology, args.gbp_max_iters,
                     )
                     r["experiment"] = "dropout"

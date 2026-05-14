@@ -135,6 +135,8 @@ def fig_metric_vs_n(results, metric, ylabel, title, fname, *, hline=None, hline_
                 linestyle=st["ls"], label=label(ctrl), linewidth=1.5)
     if hline is not None:
         ax.axhline(hline, color="black", linestyle=":", linewidth=1, label=hline_label)
+    all_ns = sorted(set(r["n_robots"] for r in subset))
+    ax.set_xticks(all_ns)
     ax.set_xlabel("Number of robots $n$")
     ax.set_ylabel(ylabel)
     ax.set_title(title)
@@ -167,28 +169,45 @@ def fig_wall_force(results, F_wall_star):
 
 
 def fig_success_rate(results):
+    """Meaningful only when each condition has multiple repeated runs.
+    With single runs per condition this degenerates to binary dots — prefer tab_summary."""
     subset = scalability_subset(results)
     ctrls = controllers_in(subset)
+    all_ns = sorted(set(r["n_robots"] for r in subset))
+
+    # Check if we have repeated runs — warn if not
+    runs_per_condition = max(
+        len([r for r in subset if r["controller"] == c and r["n_robots"] == n])
+        for c in ctrls for n in all_ns
+        if any(r["controller"] == c and r["n_robots"] == n for r in subset)
+    )
+
     fig, ax = plt.subplots(figsize=(5.5, 3.8))
     for ctrl in ctrls:
-        ns, _ = mean_metric_vs_n(subset, "success", ctrl)
         rows = [r for r in subset if r["controller"] == ctrl]
         ns_u = sorted(set(r["n_robots"] for r in rows))
-        vals = []
-        for n in ns_u:
-            s = [float(r["success"]) for r in rows if r["n_robots"] == n]
-            vals.append(float(np.mean(s)) if s else float("nan"))
+        vals = [float(np.mean([float(r["success"]) for r in rows if r["n_robots"] == n]))
+                for n in ns_u]
         st = style(ctrl)
         ax.plot(ns_u, vals, color=st["color"], marker=st["marker"],
                 linestyle=st["ls"], label=label(ctrl), linewidth=1.5)
+
+    ax.set_xticks(all_ns)
+    ax.set_yticks([0.0, 0.5, 1.0])
     ax.set_xlabel("Number of robots $n$")
     ax.set_ylabel("Success rate")
     ax.set_ylim(-0.05, 1.05)
-    ax.set_title("Success rate vs. team size")
+    title = "Success rate vs. team size"
+    if runs_per_condition == 1:
+        title += "\n(single run — binary; use table instead)"
+    ax.set_title(title, fontsize=9)
     ax.legend(loc="lower left")
     ax.grid(True, alpha=0.3)
     save_fig(fig, "04_success_rate_vs_nrobots.pdf")
-    save_note_placeholder("04_success_rate_vs_nrobots.pdf")
+    save_note_placeholder("04_success_rate_vs_nrobots.pdf",
+        "NOTE: With single runs per condition this is binary (0 or 1). "
+        "Only include in report if repeated runs were performed. "
+        "Otherwise defer to tab_summary.tex.")
 
 
 def fig_path_ratio(results):
