@@ -605,10 +605,32 @@ def _collect_paths(root: Path) -> list[Path]:
     return sorted(p for p in root.glob("*.jsonl") if not p.name.startswith("_active_"))
 
 
+def _parse_filter_file(filter_path: Path, recordings_dir: Path) -> list[Path]:
+    """Extract .jsonl filenames from a highlight list and resolve them against recordings_dir."""
+    paths = []
+    with open(filter_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            # find the first token ending in .jsonl (handles any column layout)
+            for token in line.split():
+                if token.endswith(".jsonl"):
+                    candidate = recordings_dir / token
+                    if candidate.exists():
+                        paths.append(candidate)
+                    else:
+                        print(f"[review] filter: not found: {candidate}")
+                    break
+    return paths
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("target", nargs="?", default=str(DEFAULT_DIR),
                    help="file or directory (default: real_robot/recordings/)")
+    p.add_argument("--filter", metavar="FILE",
+                   help="text file listing .jsonl names to navigate (one per line)")
     args = p.parse_args()
 
     target = Path(args.target)
@@ -617,11 +639,27 @@ def main():
         sys.exit(1)
 
     if target.is_file():
-        paths = _collect_paths(target.parent)
-        start = paths.index(target) if target in paths else 0
+        all_paths = _collect_paths(target.parent)
+        recordings_dir = target.parent
+        start = all_paths.index(target) if target in all_paths else 0
     else:
-        paths = _collect_paths(target)
+        all_paths = _collect_paths(target)
+        recordings_dir = target
         start = 0
+
+    if args.filter:
+        filter_path = Path(args.filter)
+        if not filter_path.exists():
+            print(f"[review] filter file not found: {filter_path}")
+            sys.exit(1)
+        paths = _parse_filter_file(filter_path, recordings_dir)
+        if not paths:
+            print(f"[review] no matching recordings found from filter {filter_path}")
+            sys.exit(1)
+        print(f"[review] filter: {len(paths)} recordings selected")
+        start = 0
+    else:
+        paths = all_paths
 
     if not paths:
         print(f"[review] no recordings in {target}")
