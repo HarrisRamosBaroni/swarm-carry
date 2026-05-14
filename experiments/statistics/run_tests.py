@@ -345,6 +345,10 @@ for {n_robots} robots formation, using size {recommended_payload_xy_size} instea
 
     wall_start = time.perf_counter()
     success = False
+    payload_fell = False
+    _fall_streak = 0
+    _FALL_FORCE_THRESH = 0.5   # N — total base force below this = no support
+    _FALL_STREAK_STEPS = 5     # consecutive steps before declaring a fall
 
     while env.time < max_time:
         if viewer is not None and not viewer.is_running():
@@ -459,6 +463,18 @@ for {n_robots} robots formation, using size {recommended_payload_xy_size} instea
             print(f"  [WALL TIMEOUT] {wall_time_limit:.0f}s wall-time limit reached", flush=True)
             break
 
+        bf_now = obs.get("base_forces")
+        if bf_now is not None:
+            if np.all(bf_now < _FALL_FORCE_THRESH):  # every robot has lost base contact
+                _fall_streak += 1
+                if _fall_streak >= _FALL_STREAK_STEPS:
+                    print(f"  [WARNING] Payload appears to have fallen (all base_forces ~ 0 for "
+                          f"{_fall_streak} steps)", flush=True)
+                    payload_fell = True
+                    break
+            else:
+                _fall_streak = 0
+
     wall_elapsed = time.perf_counter() - wall_start
     if viewer is not None:
         viewer.close()
@@ -516,6 +532,7 @@ for {n_robots} robots formation, using size {recommended_payload_xy_size} instea
     env.close()
 
     return {
+        "payload_fell":           payload_fell,
         "n_robots":               n_robots,
         "backend":                backend_kind,
         "topology":               topology_kind,
