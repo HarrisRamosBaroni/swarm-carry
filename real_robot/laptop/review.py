@@ -248,14 +248,16 @@ class ReviewerApp:
         self.ax_slider_out = self.fig.add_axes([0.08, 0.125, 0.55, 0.020])
         self.ax_slider_tol = self.fig.add_axes([0.08, 0.095, 0.55, 0.020])
 
-        self.ax_name = self.fig.add_axes([0.10, 0.04, 0.20, 0.035])
-        self.ax_notes = self.fig.add_axes([0.36, 0.04, 0.28, 0.035])
+        self.ax_name = self.fig.add_axes([0.08, 0.04, 0.12, 0.035])
+        self.ax_ctrl = self.fig.add_axes([0.22, 0.04, 0.14, 0.035])
+        self.ax_notes = self.fig.add_axes([0.38, 0.04, 0.24, 0.035])
 
         self.ax_btn_prev = self.fig.add_axes([0.70, 0.13, 0.06, 0.04])
         self.ax_btn_next = self.fig.add_axes([0.77, 0.13, 0.06, 0.04])
         self.ax_btn_reload = self.fig.add_axes([0.84, 0.13, 0.06, 0.04])
         self.ax_btn_save_meta = self.fig.add_axes([0.70, 0.07, 0.13, 0.04])
         self.ax_btn_trim = self.fig.add_axes([0.84, 0.07, 0.13, 0.04])
+        self.ax_btn_fav = self.fig.add_axes([0.70, 0.01, 0.27, 0.04])
 
     def _connect_widgets(self):
         self.slider_in = Slider(self.ax_slider_in, "trim in", 0.0, 1.0, valinit=0.0)
@@ -266,19 +268,22 @@ class ReviewerApp:
         self.slider_tol.on_changed(lambda _v: self._redraw_xy())
 
         self.tb_name = TextBox(self.ax_name, "name ", initial="")
+        self.tb_ctrl = TextBox(self.ax_ctrl, "ctrl ", initial="")
         self.tb_notes = TextBox(self.ax_notes, "notes ", initial="")
 
         self.btn_prev = Button(self.ax_btn_prev, "◀ prev")
         self.btn_next = Button(self.ax_btn_next, "next ▶")
         self.btn_reload = Button(self.ax_btn_reload, "reload")
-        self.btn_save_meta = Button(self.ax_btn_save_meta, "save name/notes")
+        self.btn_save_meta = Button(self.ax_btn_save_meta, "save meta")
         self.btn_trim = Button(self.ax_btn_trim, "trim & save")
+        self.btn_fav = Button(self.ax_btn_fav, "★ copy to favourites")
 
         self.btn_prev.on_clicked(lambda _e: self._step(-1))
         self.btn_next.on_clicked(lambda _e: self._step(+1))
         self.btn_reload.on_clicked(lambda _e: self._load_current())
         self.btn_save_meta.on_clicked(lambda _e: self._save_meta())
         self.btn_trim.on_clicked(lambda _e: self._trim_and_save())
+        self.btn_fav.on_clicked(lambda _e: self._favourite())
 
         # trim-marker lines per timeseries axis (created on load)
         self.in_lines: list = []
@@ -302,8 +307,9 @@ class ReviewerApp:
             self.fig.suptitle(f"failed to load {path.name}: {e}")
             self.fig.canvas.draw_idle()
             return
-        # reset name/notes
+        # reset name/controller/notes
         self.tb_name.set_val(self.rec.meta.get("name", ""))
+        self.tb_ctrl.set_val(self.rec.meta.get("controller", ""))
         self.tb_notes.set_val(self.rec.meta.get("notes", ""))
 
         dur = self.rec.duration
@@ -521,11 +527,28 @@ class ReviewerApp:
             self.rec.meta_path = new_meta
 
         self.rec.meta["name"] = new_name
+        self.rec.meta["controller"] = self.tb_ctrl.text.strip()
         self.rec.meta["notes"] = notes
         with open(self.rec.meta_path, "w") as f:
             json.dump(self.rec.meta, f, indent=2)
         print(f"[review] saved meta → {self.rec.path.name}")
         self._redraw()
+
+    def _favourite(self):
+        """Copy current file + meta into a favourites/ subfolder."""
+        if self.rec is None:
+            return
+        fav_dir = self.rec.path.parent / "favourites"
+        fav_dir.mkdir(exist_ok=True)
+        dest_jsonl = fav_dir / self.rec.path.name
+        dest_meta = fav_dir / self.rec.meta_path.name
+        if dest_jsonl.exists():
+            print(f"[review] already in favourites: {self.rec.path.name}")
+        else:
+            shutil.copy2(self.rec.path, dest_jsonl)
+            print(f"[review] ★ favourited → {dest_jsonl}")
+        if self.rec.meta_path.exists():
+            shutil.copy2(self.rec.meta_path, dest_meta)
 
     def _trim_and_save(self):
         if self.rec is None:
