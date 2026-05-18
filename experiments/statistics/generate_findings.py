@@ -33,6 +33,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.signal import medfilt
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -321,82 +322,160 @@ def fig_trajectory_comparison(results, default_n=4):
     save_note_placeholder("06_trajectory_comparison.pdf")
 
 
-def _pick_ts_pair(results, ctrl_a, ctrl_b, default_n=4):
-    """Return (result_a, result_b) or (None, None) for time-series figures."""
-    subset = [r for r in scalability_subset(results) if r["n_robots"] == default_n]
-    ra = next((r for r in subset if r["controller"] == ctrl_a), None)
-    rb = next((r for r in subset if r["controller"] == ctrl_b), None)
-    return ra, rb
+def _centralised_ts_runs(results, default_n):
+    """Return list of result dicts for centralised controllers at default_n, scalability exp."""
+    subset = [r for r in scalability_subset(results)
+              if r["n_robots"] == default_n and r["controller"] not in DECENTRALISED]
+    # one entry per controller (first run if repeated)
+    seen = {}
+    for r in subset:
+        seen.setdefault(r["controller"], r)
+    return list(seen.values())
 
 
 def fig_wall_force_timeseries(results, F_wall_star, default_n=4):
-    ra, rb = _pick_ts_pair(results, "MRCapController", "ContactHealthController", default_n)
-    if ra is None or rb is None:
-        print("  [skip] missing MRCap or ContactHealth for timeseries")
+    """07 — per-robot wall force + mean, one subplot per centralised controller."""
+    runs = _centralised_ts_runs(results, default_n)
+    if not runs:
+        print("  [skip] no centralised runs for wall-force timeseries")
         return
 
-    fig, axes = plt.subplots(2, 1, figsize=(6, 4.5), sharex=True)
-    dt = 0.05  # control period (s)
+    dt = 0.05
+    n_ctrl = len(runs)
+    fig, axes = plt.subplots(n_ctrl, 1, figsize=(6, 2.8 * n_ctrl), sharex=True)
+    if n_ctrl == 1:
+        axes = [axes]
 
-    for ax, r, ctrl_name in zip(axes,
-                                [ra, rb],
-                                ["MR.CAP (baseline)", "ContactHealth"]):
+    for ax, r in zip(axes, runs):
+        ctrl = r["controller"]
         wf = r.get("wall_forces_ts")
         if not wf:
             ax.text(0.5, 0.5, "No force data", transform=ax.transAxes, ha="center")
+            ax.set_title(label(ctrl))
             continue
-        wf_arr = np.array(wf)   # (T, n)
-        T = wf_arr.shape[0]
-        t = np.arange(T) * dt
-        n = wf_arr.shape[1]
-        for i in range(n):
-            ax.plot(t, wf_arr[:, i], alpha=0.6, linewidth=0.8)
+        wf_arr = np.array(wf)   # (T, n_robots)
+        t = np.arange(wf_arr.shape[0]) * dt
+        for i in range(wf_arr.shape[1]):
+            ax.plot(t, wf_arr[:, i], alpha=0.45, linewidth=0.7)
         ax.plot(t, wf_arr.mean(axis=1), "k-", linewidth=1.5, label="Mean")
         ax.axhline(F_wall_star, color="red", linestyle="--", linewidth=1,
                    label=f"$F_{{wall}}^*$")
         ax.set_ylabel("Wall force (N)")
-        ax.set_title(ctrl_name)
+        ax.set_title(label(ctrl))
         ax.legend(fontsize=7)
         ax.grid(True, alpha=0.3)
 
     axes[-1].set_xlabel("Time (s)")
-    fig.suptitle(f"Per-robot wall contact force over run ($n={default_n}$)", y=1.01)
+    fig.suptitle(f"Per-robot wall contact force ($n={default_n}$)", y=1.01)
     fig.tight_layout()
     save_fig(fig, "07_wall_force_timeseries.pdf")
     save_note_placeholder("07_wall_force_timeseries.pdf",
         "Note which controller maintains forces near F_wall* vs drifts below it.")
 
 
-def fig_formation_error_timeseries(results, default_n=4):
-    ra, rb = _pick_ts_pair(results, "MRCapController", "ContactHealthController", default_n)
-    if ra is None or rb is None:
-        print("  [skip] missing MRCap or ContactHealth for timeseries")
+def fig_wall_force_timeseries_mean(results, F_wall_star, default_n=4):
+    """07b — mean wall force only, all centralised controllers on one axes."""
+    runs = _centralised_ts_runs(results, default_n)
+    if not runs:
+        print("  [skip] no centralised runs for 07b")
         return
 
-    fig, ax = plt.subplots(figsize=(6, 3.5))
     dt = 0.05
+    fig, ax = plt.subplots(figsize=(6, 3.5))
 
-    for r, ctrl_name, st_key in [
-        (ra, "MR.CAP (baseline)",  "MRCapController"),
-        (rb, "ContactHealth",      "ContactHealthController"),
-    ]:
+    for r in runs:
+        ctrl = r["controller"]
+        wf = r.get("wall_forces_ts")
+        if not wf:
+            continue
+        wf_arr = np.array(wf)
+        t = np.arange(wf_arr.shape[0]) * dt
+        st = style(ctrl)
+        ax.plot(t, wf_arr.mean(axis=1), color=st["color"], linestyle=st["ls"],
+                linewidth=1.5, label=label(ctrl))
+
+    ax.axhline(F_wall_star, color="black", linestyle=":", linewidth=1,
+               label=f"$F_{{wall}}^*={F_wall_star:.0f}$ N")
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Mean wall force (N)")
+    ax.set_title(f"Mean wall contact force — centralised controllers ($n={default_n}$)")
+    ax.legend(fontsize=8)
+    ax.grid(True, alpha=0.3)
+    save_fig(fig, "07b_wall_force_mean_timeseries.pdf")
+    save_note_placeholder("07b_wall_force_mean_timeseries.pdf",
+        "Cleaner comparison of mean tracking behaviour without per-robot noise.")
+
+
+def fig_wall_force_timeseries_smooth(results, F_wall_star, default_n=4, kernel=11):
+    """07c — median-filtered (per robot, then averaged) wall force comparison.
+
+    Filter is applied to each robot's signal individually before averaging so that
+    per-robot transient spikes are suppressed independently.
+    """
+    runs = _centralised_ts_runs(results, default_n)
+    if not runs:
+        print("  [skip] no centralised runs for 07c")
+        return
+
+    dt = 0.05
+    fig, ax = plt.subplots(figsize=(6, 3.5))
+
+    for r in runs:
+        ctrl = r["controller"]
+        wf = r.get("wall_forces_ts")
+        if not wf:
+            continue
+        wf_arr = np.array(wf)   # (T, n_robots)
+        # median filter each robot's signal, then average
+        filtered = np.stack([medfilt(wf_arr[:, i], kernel_size=kernel)
+                             for i in range(wf_arr.shape[1])], axis=1)
+        t = np.arange(wf_arr.shape[0]) * dt
+        st = style(ctrl)
+        ax.plot(t, filtered.mean(axis=1), color=st["color"], linestyle=st["ls"],
+                linewidth=1.5, label=label(ctrl))
+
+    ax.axhline(F_wall_star, color="black", linestyle=":", linewidth=1,
+               label=f"$F_{{wall}}^*={F_wall_star:.0f}$ N")
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Wall force (N, smoothed)")
+    ax.set_title(f"Wall force — median-filtered mean ($k={kernel}$, $n={default_n}$)")
+    ax.legend(fontsize=8)
+    ax.grid(True, alpha=0.3)
+    save_fig(fig, "07c_wall_force_smooth_timeseries.pdf")
+    save_note_placeholder("07c_wall_force_smooth_timeseries.pdf",
+        f"Median filter kernel={kernel} steps applied per robot before averaging. "
+        "Removes transient contact spikes; trend is interpretable.")
+
+
+def fig_formation_error_timeseries(results, default_n=4):
+    """08 — formation error over time for all centralised controllers."""
+    runs = _centralised_ts_runs(results, default_n)
+    if not runs:
+        print("  [skip] no centralised runs for formation-error timeseries")
+        return
+
+    dt = 0.05
+    fig, ax = plt.subplots(figsize=(6, 3.5))
+
+    for r in runs:
+        ctrl = r["controller"]
         fe = r.get("formation_errors_ts")
         if not fe:
             continue
         fe_arr = np.array(fe)
         t = np.arange(len(fe_arr)) * dt
-        st = style(st_key)
+        st = style(ctrl)
         ax.plot(t, fe_arr, color=st["color"], linestyle=st["ls"],
-                linewidth=1.5, label=ctrl_name)
+                linewidth=1.5, label=label(ctrl))
 
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Formation error (m)")
-    ax.set_title(f"Formation tracking error over run ($n={default_n}$)")
-    ax.legend()
+    ax.set_title(f"Formation tracking error — centralised controllers ($n={default_n}$)")
+    ax.legend(fontsize=8)
     ax.grid(True, alpha=0.3)
     save_fig(fig, "08_formation_error_timeseries.pdf")
     save_note_placeholder("08_formation_error_timeseries.pdf",
-        "Compare drift rate and final error between controllers.")
+        "Compare drift rate and steady-state error across all centralised controllers.")
 
 
 def fig_dropout(results):
@@ -584,6 +663,8 @@ def main():
     fig_contact_imbalance(results, F_wall_star)
     fig_trajectory_comparison(results, args.default_n)
     fig_wall_force_timeseries(results, F_wall_star, args.default_n)
+    fig_wall_force_timeseries_mean(results, F_wall_star, args.default_n)
+    fig_wall_force_timeseries_smooth(results, F_wall_star, args.default_n)
     fig_formation_error_timeseries(results, args.default_n)
     fig_dropout(results)
 
