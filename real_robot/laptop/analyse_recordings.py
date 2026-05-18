@@ -27,7 +27,6 @@ from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import matplotlib.cm as cm
 import numpy as np
 
 from real_robot.laptop.review import (
@@ -80,29 +79,85 @@ def compute_metrics(rec: Recording) -> dict:
 
     ts_p, xs_p, ys_p = _payload_trajectory(rec)
     goal_tol = _goal_tol(rec)
-    last_goal = rec.goals[-1] if rec.goals else None  # (t, x, y, theta)
 
-    # ---- path length ratio ----
-    if len(xs_p) >= 2:
-        path_len = float(np.hypot(np.diff(xs_p), np.diff(ys_p)).sum())
-        gx = last_goal[1] if last_goal and last_goal[1] is not None else xs_p[-1]
-        gy = last_goal[2] if last_goal and last_goal[2] is not None else ys_p[-1]
-        straight = float(np.hypot(xs_p[0] - gx, ys_p[0] - gy))
-        result["path_length_ratio"] = path_len / straight if straight > 0.01 else float("nan")
-    else:
-        path_len = float("nan")
-        result["path_length_ratio"] = float("nan")
+    # ---- per-segment stats (one segment per goal) ----
+    # Segment i: robot moves toward goals[i].
+    #   starts at goals[i].t (clamped to payload range), or ts_p[0] for i==0
+    #   ends   at goals[i+1].t (clamped)              , or ts_p[-1] for last
+    def _px_at(t):
+        """Payload (x,y) interpolated at absolute time t."""
+        if len(ts_p) == 0:
+            return float("nan"), float("nan")
+        t = float(np.clip(t, ts_p[0], ts_p[-1]))
+        return float(np.interp(t, ts_p, xs_p)), float(np.interp(t, ts_p, ys_p))
 
-    # ---- success ----
-    if len(xs_p) >= 1 and last_goal and last_goal[1] is not None:
-        dist_to_goal = float(np.hypot(xs_p[-1] - last_goal[1], ys_p[-1] - last_goal[2]))
-        result["success"] = dist_to_goal <= goal_tol
-        result["dist_to_goal_m"] = dist_to_goal
-    else:
-        result["success"] = False
-        result["dist_to_goal_m"] = float("nan")
+    def _path_len_between(t_a, t_b):
+        """Cumulative payload path length in [t_a, t_b]."""
+        if len(ts_p) < 2:
+            return float("nan")
+        mask = (ts_p >= t_a) & (ts_p <= t_b)
+        xs_s, ys_s = xs_p[mask], ys_p[mask]
+        if len(xs_s) < 2:
+            return 0.0
+        return float(np.hypot(np.diff(xs_s), np.diff(ys_s)).sum())
 
-    result["goal"] = ([last_goal[1], last_goal[2], last_goal[3]] if last_goal
+    segments: list[dict] = []
+    goals = rec.goals  # list of (t, x, y, theta)
+
+    if goals and len(ts_p) >= 2:
+        for i, (g_t, gx, gy, gth) in enumerate(goals):
+            if gx is None or gy is None:
+                continue
+            t_seg_start = float(np.clip(
+                ts_p[0] if i == 0 else goals[i - 1][0],
+                ts_p[0], ts_p[-1],
+            ))
+            t_seg_end = float(np.clip(
+                ts_p[-1] if i == len(goals) - 1 else goals[i + 1][0],
+                ts_p[0], ts_p[-1],
+            ))
+            if t_seg_end <= t_seg_start:
+                continue
+
+            px_start, py_start = _px_at(t_seg_start)
+            px_end,   py_end   = _px_at(t_seg_end)
+            straight = float(np.hypot(px_start - gx, py_start - gy))
+            path_len_seg = _path_len_between(t_seg_start, t_seg_end)
+            dist_end = float(np.hypot(px_end - gx, py_end - gy))
+
+            segments.append({
+                "goal_index":      i,
+                "goal_x":          float(gx),
+                "goal_y":          float(gy),
+                "t_start":         t_seg_start - rec.t0,
+                "t_end":           t_seg_end   - rec.t0,
+                "duration_s":      t_seg_end - t_seg_start,
+                "path_len_m":      path_len_seg,
+                "straight_line_m": straight,
+                "path_ratio":      path_len_seg / straight if straight > 0.01 else float("nan"),
+                "dist_to_goal_m":  dist_end,
+                "success":         dist_end <= goal_tol,
+            })
+
+    result["segments"] = segments
+    result["n_goals"] = len(goals)
+
+    # overall path ratio: total path / piecewise-ideal (sum of per-segment straight lines)
+    total_path = _path_len_between(ts_p[0], ts_p[-1]) if len(ts_p) >= 2 else float("nan")
+    total_straight = sum(s["straight_line_m"] for s in segments) if segments else float("nan")
+    result["path_length_ratio"] = (total_path / total_straight
+                                   if segments and total_straight > 0.01
+                                   else float("nan"))
+
+    # success = all segments reached their goal
+    result["success"] = bool(segments and all(s["success"] for s in segments))
+    last_seg = segments[-1] if segments else None
+    result["dist_to_goal_m"] = last_seg["dist_to_goal_m"] if last_seg else float("nan")
+
+    # backwards-compat fields used by plot
+    last_goal = goals[-1] if goals else None
+    result["goal"] = ([float(last_goal[1]), float(last_goal[2]), float(last_goal[3])]
+                      if last_goal and last_goal[1] is not None
                       else [float(xs_p[-1]) if len(xs_p) else 0.0,
                             float(ys_p[-1]) if len(ys_p) else 0.0, 0.0])
     result["goal_tol_m"] = goal_tol
@@ -208,7 +263,7 @@ def plot_trajectory(rec: Recording, metrics: dict, out_path: Path):
     from matplotlib.lines import Line2D
     legend_handles = []
 
-    # robots
+    # robots — solid color line + viridis scatter for time, faded
     for rid in sorted(rec.poses):
         if rid == PAYLOAD_ID:
             continue
@@ -216,47 +271,72 @@ def plot_trajectory(rec: Recording, metrics: dict, out_path: Path):
         valid = ~(np.isnan(r_xs) | np.isnan(r_ys))
         if not valid.any():
             continue
-        color = _color_for(rid)
-        ax.plot(r_xs[valid], r_ys[valid], "-", color=color, alpha=0.35, linewidth=0.9)
-        legend_handles.append(Line2D([0], [0], color=color, linewidth=1.5,
-                                     label=_label_for(rid)))
+        r_ts_v = r_ts[valid];  r_xs_v = r_xs[valid];  r_ys_v = r_ys[valid]
+        rc = _color_for(rid)
+        ax.plot(r_xs_v, r_ys_v, "-", color=rc, alpha=0.5, linewidth=1.3)
+        ax.scatter(r_xs_v, r_ys_v, c=r_ts_v - t0, cmap="viridis", s=4, zorder=3)
+        ax.plot(r_xs_v[0],  r_ys_v[0],  "o", color=rc, ms=5,
+                mec="black", mew=0.6, alpha=0.85, zorder=4)
+        ax.plot(r_xs_v[-1], r_ys_v[-1], "s", color=rc, ms=5,
+                mec="black", mew=0.6, alpha=0.85, zorder=4)
+        legend_handles.append(
+            Line2D([0], [0], color=rc, linewidth=1.3, alpha=0.6,
+                   label=_label_for(rid))
+        )
 
-    # payload
+    # payload — solid color line + viridis scatter for time, thicker
     if len(xs_p) >= 2:
-        norm = plt.Normalize(ts_p[0] - t0, ts_p[-1] - t0)
-        for i in range(len(xs_p) - 1):
-            ax.plot(xs_p[i:i+2], ys_p[i:i+2], "-",
-                    color=cm.plasma(norm(ts_p[i] - t0)), linewidth=1.8)
-        ax.plot(xs_p[0], ys_p[0], "o", color="black", ms=8, zorder=5,
-                label="payload start")
-        ax.plot(xs_p[-1], ys_p[-1], "s", color="black", ms=8, zorder=5,
-                label="payload end")
+        pc = _color_for(PAYLOAD_ID)
+        ax.plot(xs_p, ys_p, "-", color=pc, alpha=0.5, linewidth=2.2)
+        ax.scatter(xs_p, ys_p, c=ts_p - t0, cmap="viridis", s=6, zorder=4)
+        ax.plot(xs_p[0],  ys_p[0],  "o", color=pc, ms=9, mec="black", mew=0.8, zorder=5)
+        ax.plot(xs_p[-1], ys_p[-1], "s", color=pc, ms=9, mec="black", mew=0.8, zorder=5)
         legend_handles += [
-            Line2D([0], [0], color=cm.plasma(0.1), linewidth=2, label="payload (early)"),
-            Line2D([0], [0], color=cm.plasma(0.9), linewidth=2, label="payload (late)"),
+            Line2D([0], [0], color="black", linewidth=2.2, label="payload"),
             Line2D([0], [0], marker="o", color="black", linewidth=0, ms=7, label="start"),
             Line2D([0], [0], marker="s", color="black", linewidth=0, ms=7, label="end"),
         ]
 
-    # goal
-    if goal[0] is not None:
-        ax.plot(goal[0], goal[1], "g*", ms=14, mec="black", zorder=6)
-        ring = plt.Circle((goal[0], goal[1]), tol, fill=False,
-                          linestyle="--", edgecolor="green", linewidth=1.2, alpha=0.7)
+    # goals — all waypoints, numbered, faded except last
+    all_goals = rec.goals
+    goal_added_to_legend = False
+    for i, (g_t, gx, gy, gth) in enumerate(all_goals):
+        if gx is None or gy is None:
+            continue
+        is_last = (i == len(all_goals) - 1)
+        alpha_pt   = 0.95 if is_last else 0.45
+        alpha_ring = 0.65 if is_last else 0.20
+        ax.plot(gx, gy, "g*", ms=14 if is_last else 10,
+                mec="black", alpha=alpha_pt, zorder=6)
+        if len(all_goals) > 1:
+            ax.annotate(f"G{i}", (gx, gy),
+                        textcoords="offset points", xytext=(6, 4),
+                        fontsize=7, alpha=alpha_pt, color="darkgreen")
+        ring = plt.Circle((gx, gy), tol, fill=False, linestyle="--",
+                          edgecolor="green", linewidth=1.2, alpha=alpha_ring)
         ax.add_patch(ring)
-        legend_handles.append(
-            Line2D([0], [0], marker="*", color="green", mec="black",
-                   linewidth=0, ms=10, label=f"goal (tol={tol:.2f} m)")
-        )
+        if not goal_added_to_legend:
+            legend_handles.append(
+                Line2D([0], [0], marker="*", color="green", mec="black",
+                       linewidth=0, ms=10, label=f"goal (tol={tol:.2f} m)")
+            )
+            goal_added_to_legend = True
 
     name = rec.meta.get("name") or rec.path.stem
     ctrl = metrics["controller"]
     ratio = metrics["path_length_ratio"]
-    fe = metrics["formation_error_mean_m"]
+    segs = metrics.get("segments", [])
+    if len(segs) > 1:
+        seg_ratios = "/".join(
+            f"{s['path_ratio']:.2f}" if not (isinstance(s['path_ratio'], float) and np.isnan(s['path_ratio'])) else "—"
+            for s in segs
+        )
+        ratio_str = f"path ratio={ratio:.2f} (per goal: {seg_ratios})"
+    else:
+        ratio_str = f"path ratio={ratio:.2f}"
     ax.set_title(
         f"{name}  |  {ctrl}\n"
-        f"path ratio={ratio:.2f}  fe={fe:.3f} m  "
-        f"{'✓' if metrics['success'] else '✗'}",
+        f"{ratio_str}  {'✓' if metrics['success'] else '✗'}",
         fontsize=9,
     )
     ax.legend(handles=legend_handles, loc="best", fontsize=7)
@@ -309,7 +389,92 @@ def print_summary(all_metrics: list[dict]):
             format(fv("success"),                 ">4"),
         ])
         print(row)
+        segs = m.get("segments", [])
+        if len(segs) > 1:
+            for s in segs:
+                ok = "✓" if s["success"] else "✗"
+                pr = _fmt(s["path_ratio"]) if not (isinstance(s["path_ratio"], float) and np.isnan(s["path_ratio"])) else "—"
+                print(f"    G{s['goal_index']}  dur={s['duration_s']:.1f}s  "
+                      f"path_ratio={pr}  dist_end={s['dist_to_goal_m']:.3f}m  {ok}")
     print()
+
+
+# ---------------------------------------------------------------------------
+# LaTeX table
+# ---------------------------------------------------------------------------
+
+def _tex_fmt(v, fmt=".2f"):
+    if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
+        return r"—"
+    return format(v, fmt)
+
+
+def save_latex_table(all_metrics: list[dict], out_path: Path):
+    """Write a booktabs LaTeX table, one row per recording."""
+    header = "\n".join([
+        r"\begin{table}[t]",
+        r"\centering",
+        r"\caption{Real-robot experiment results. "
+        r"Formation error: mean deviation of each robot from its initial offset relative to the payload centroid. "
+        r"Wall force: mean total contact force per robot over the run. "
+        r"Imbalance: standard deviation of per-robot time-averaged forces. "
+        r"Path ratio: total payload path\,/\,sum of per-waypoint straight-line distances, "
+        r"where each straight-line distance is measured from the payload position at the start of that waypoint segment to the waypoint goal; "
+        r"values above 1.0 indicate the payload took a longer-than-straight path (e.g.\ overshoot or curvature). "
+        r"$\dagger$~multi-waypoint run; per-waypoint ratios in parentheses.}",
+        r"\label{tab:real_results}",
+        r"\begin{tabular}{llcccccccc}",
+        r"\toprule",
+        r"Recording & Controller & $n$ & Dur.\,(s) & Path ratio "
+        r"& Form.\,err.\,(m) & Force\,(N) & Imbal.\,(N) & Success \\",
+        r"\midrule",
+    ])
+
+    body_lines = []
+    for m in all_metrics:
+        name = m.get("recording", "")
+        # strip timestamp prefix and .jsonl suffix for brevity
+        stem = name.replace(".jsonl", "")
+        parts = stem.split("_", 1)
+        short_name = parts[1] if len(parts) == 2 else stem
+        short_name = short_name.replace("_", r"\_")
+
+        ctrl_raw = m.get("controller", "unknown")
+        ctrl = ctrl_raw.replace("_", r"\_")
+
+        n = str(m.get("n_robots", "?"))
+        dur = _tex_fmt(m.get("duration_s"), ".1f")
+
+        segs = m.get("segments", [])
+        multi = len(segs) > 1
+        overall_ratio = _tex_fmt(m.get("path_length_ratio"))
+        if multi:
+            per_seg = "/".join(
+                _tex_fmt(s["path_ratio"]) if not (isinstance(s["path_ratio"], float) and np.isnan(s["path_ratio"])) else r"—"
+                for s in segs
+            )
+            ratio_cell = rf"{overall_ratio}$^\dagger$ ({per_seg})"
+        else:
+            ratio_cell = overall_ratio
+
+        fe   = _tex_fmt(m.get("formation_error_mean_m"), ".3f")
+        wf   = _tex_fmt(m.get("wall_force_mean_N"), ".1f")
+        imb  = _tex_fmt(m.get("wall_force_imbalance_N"), ".2f")
+        ok   = r"\checkmark" if m.get("success") else r"$\times$"
+
+        body_lines.append(
+            rf"{short_name} & {ctrl} & {n} & {dur} & {ratio_cell} & {fe} & {wf} & {imb} & {ok} \\"
+        )
+
+    footer = "\n".join([
+        r"\bottomrule",
+        r"\end{tabular}",
+        r"\end{table}",
+    ])
+
+    tex = header + "\n" + "\n".join(body_lines) + "\n" + footer + "\n"
+    out_path.write_text(tex)
+    print(f"[analyse] table   → {out_path}")
 
 
 # ---------------------------------------------------------------------------
@@ -384,6 +549,9 @@ def main():
     json_path.write_text(json.dumps(payload, indent=2))
     print(f"[analyse] metrics → {json_path}")
     print(f"[analyse] figures → {fig_dir}/")
+
+    tex_path = out_dir / f"real_results_{stamp}.tex"
+    save_latex_table(all_metrics, tex_path)
 
 
 if __name__ == "__main__":
