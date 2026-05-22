@@ -202,12 +202,12 @@ writing new controllers.
 ```bash
 # MPC scaling study (solve time vs number of robots):
 cd experiments/mpc_scaling
-python run_scaling_experiment.py --n-values 2,4,8 --distance 5.0
+python3 run_scaling_experiment.py --n-values 2,4,8 --distance 5.0
 
 # GBP distributed estimation demos:
 cd experiments/gbp_estimation
-python gbp_distributed_estimation.py
-python test_async_dropout.py
+python3 gbp_distributed_estimation.py
+python3 test_async_dropout.py
 ```
 
 ---
