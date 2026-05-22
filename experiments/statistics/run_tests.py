@@ -161,8 +161,11 @@ def run_single(
     visualise: bool = False,
     sim_speed: float = 1.0,
     wall_time_limit: float = None,
+    camera_pose: dict | None = None,
+    goal: tuple | None = None,
 ) -> dict:
-    goal = (np.sqrt(distance**2/2) , np.sqrt(distance**2/2) , 0.0) #move in diagonal, to a goal <distance>m away
+    if goal is None:
+        goal = (np.sqrt(distance**2/2), np.sqrt(distance**2/2), 0.0)  # diagonal, <distance> m away
     payload_size = (PAYLOAD_HX, PAYLOAD_HY, PAYLOAD_HZ)
     # formation = face_contact_formation(n_robots,
     #                                    payload_hx=PAYLOAD_HX,
@@ -325,10 +328,24 @@ for {n_robots} robots formation, using size {recommended_payload_xy_size} instea
     controller.reset()
 
     viewer = None
+    captured_cam = None
     if visualise:
         import mujoco.viewer as mjv
         viewer = mjv.launch_passive(env.model, env.data)
-        input("  Viewer open — adjust camera, then press Enter to start...")
+        if camera_pose is not None:
+            viewer.cam.azimuth   = camera_pose["azimuth"]
+            viewer.cam.elevation = camera_pose["elevation"]
+            viewer.cam.distance  = camera_pose["distance"]
+            if "lookat" in camera_pose:
+                viewer.cam.lookat[:] = camera_pose["lookat"]
+        else:
+            input("  Viewer open — adjust camera, then press Enter to start...")
+        captured_cam = {
+            "azimuth":   float(viewer.cam.azimuth),
+            "elevation": float(viewer.cam.elevation),
+            "distance":  float(viewer.cam.distance),
+            "lookat":    list(viewer.cam.lookat),
+        }
 
     goal_arr = np.array(goal)
     formation_arr = np.array([(f[0], f[1]) for f in formation])  # (n, 2) body-frame offsets
@@ -571,6 +588,7 @@ for {n_robots} robots formation, using size {recommended_payload_xy_size} instea
         "wall_forces_ts":         wf_arr.tolist() if wf_arr is not None else [],
         "base_forces_ts":         bf_arr.tolist() if bf_arr is not None else [],
         "formation_errors_ts":    fe_arr.tolist(),
+        "camera_pose":            captured_cam,
     }
 
 
