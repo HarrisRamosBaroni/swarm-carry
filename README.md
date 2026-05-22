@@ -1,7 +1,8 @@
 # Swarm Carry
 
 Research platform for multi-robot cooperative payload transport. The stack
-runs as pure Python (MuJoCo only) or over ROS2 Jazzy for sim-to-real transfer.
+runs as pure Python (MuJoCo only) or on real myAGV robots via ZeroMQ (no ROS2
+required anywhere).
 
 See [docs/scenario.md](docs/scenario.md) for the target research scenario and
 current assumptions. The existing simulation infrastructure is a stepping stone —
@@ -12,9 +13,9 @@ read that doc before building on top of it.
 ## Repo structure
 
 ```
-swarmlib/          Core Python library — no ROS2 required
-  controllers/     BaseController interface + CentralizedMPC
-  communication/   SimulatedBackend, AsyncSimulatedBackend, ROS2Backend
+swarmlib/          Core Python library
+  controllers/     BaseController interface + controllers (MPC, MRCap, DRCap, …)
+  communication/   SimulatedBackend, AsyncSimulatedBackend, ZeroMQSingleAgentBackend
   simulation/      MuJoCo environments and scene generators
     env.py             SwarmTransportEnv — diff-drive TurtleBot3s all on one face,
                        straight-line push; used only for the MPC scaling experiment
@@ -24,10 +25,13 @@ swarmlib/          Core Python library — no ROS2 required
                        scenario: mecanum-wheeled robots with L-carriages, configurable
                        formation around the payload centroid, base/wall force readout
 
-src/               ROS2 workspace (colcon build runs here)
-  swarm_mujoco_bridge/   MuJoCo physics exposed as ROS2 pub/sub
-  swarm_agent/           Per-robot controller node
-  swarm_central/         Centralized controller node
+real_robot/        Real-robot deployment stack (ZeroMQ + ROS1 locally on myAGVs)
+  laptop/          Laptop-side runners: central_runner, mocap_bridge, control_panel,
+                   record, analyse_recordings
+  robot/           Per-robot process: agent_runner, ros1_bridge, load_cell_reader
+  transport/       ZMQ message definitions
+  scripts/         deploy.sh, launch.sh, mocap_pub.py (OWL → ZMQ)
+  config/          network.yaml.example, dev.env.example
 
 models/            Robot model assets
   turtlebot3/      TurtleBot3 Waffle Pi mesh files + standalone XML
@@ -36,10 +40,13 @@ models/            Robot model assets
 experiments/
   mpc_scaling/     MPC solve-time vs n_robots scaling study
   gbp_estimation/  Gaussian Belief Propagation distributed estimation demos
+  drcap_fg/        DR.CAP distributed controller experiments
+  mrcap_fg/        MR.CAP centralised controller experiments
+  …
 
 demos/
-  mujoco_swarm_demo/    Visual contact/physics validation (no ROS2)
-  mecanum_ros2_demo/    Summit XL Steel mecanum drive via ROS2
+  mujoco_swarm_demo/    Visual contact/physics validation
+  research_scenario_demo/  Full mecanum research scenario demo
 ```
 
 ---
@@ -50,13 +57,12 @@ demos/
 git clone <repo> && cd swarm-carry
 git submodule update --init models/holonomic_dp
 
-# All Python dependencies + editable swarmlib install (no ROS2 needed)
+# All Python dependencies + editable swarmlib install
 pip install -r requirements.txt
-
-# ROS2 workspace (only needed for bridge/agent/central nodes)
-source /opt/ros/jazzy/setup.bash
-cd src && colcon build --symlink-install && source install/setup.bash
 ```
+
+For real-robot deployment, additional per-machine setup is documented in
+[real_robot/README.md](real_robot/README.md).
 
 ---
 
@@ -130,9 +136,11 @@ class MyController(BaseController):
         pass
 ```
 
-Plug it into a node by setting `self.controller = MyController(...)` in
-`src/swarm_agent/swarm_agent/agent_controller_node.py` or
-`src/swarm_central/swarm_central/central_controller_node.py`.
+For simulation experiments, instantiate the controller directly in your
+`experiments/<method>/run_experiment.py`. For real-robot deployment, wire
+it into `real_robot/robot/agent_runner.py` (decentralised) or
+`real_robot/laptop/central_runner.py` (centralised) — see
+[real_robot/README.md](real_robot/README.md) for the sim→deploy pattern.
 
 ---
 
@@ -143,15 +151,15 @@ factor graph messages, etc.) independently of the physics bridge.
 
 ```python
 from swarmlib.communication.backend import SimulatedBackend, create_ring_topology
-from swarmlib.communication.ros2_backend import ROS2Backend
+from swarmlib.communication.zmq_backend import ZeroMQSingleAgentBackend
 
 topo = create_ring_topology(4)
 
-# Testing — no ROS2 needed:
+# Testing — pure Python, no networking:
 backend = SimulatedBackend(num_agents=4, topology=topo)
 
-# Real networked deployment:
-backend = ROS2Backend(num_agents=4, topology=topo)
+# Real deployment (one process per robot):
+backend = ZeroMQSingleAgentBackend(my_id=0, topology=topo)
 
 # API is identical:
 backend.broadcast(from_id=0, message=my_gaussian_msg)
@@ -163,62 +171,29 @@ See `experiments/gbp_estimation/` for working examples with dropout and delay.
 
 ---
 
-## Full ROS2 simulation
+## Real robot deployment (myAGV)
 
-**Terminal 1 — physics bridge:**
-```bash
-source /opt/ros/jazzy/setup.bash && source src/install/setup.bash
-ros2 launch swarm_mujoco_bridge sim.launch.py n_robots:=2 push_distance:=5.0
-```
-
-Verify it's running:
-```bash
-ros2 topic echo /swarm/payload/state
-ros2 topic echo /swarm/robot_0/force
-```
-
-**Terminal 2 — controller (pick one):**
-```bash
-# Centralized (laptop runs one node for all robots):
-ros2 launch swarm_central central.launch.py n_robots:=2 goal_x:=5.0
-
-# Decentralized (one node per robot, same machine or distributed):
-ros2 launch swarm_agent agent.launch.py agent_id:=0 neighbor_ids:="1" goal_x:=5.0
-ros2 launch swarm_agent agent.launch.py agent_id:=1 neighbor_ids:="0" goal_x:=5.0
-```
-
-Controller nodes do not know whether they talk to sim or real hardware —
-the topic interface is identical.
-
----
-
-## Topic map
-
-```
-/swarm/payload/state        ← bridge (sim) or payload sensor node (real)
-/swarm/robot_{i}/state      ← bridge (sim) or robot odometry (real)
-/swarm/robot_{i}/force      ← bridge (sim) or F/T sensor (real)
-/swarm/robot_{i}/cmd_vel    → applied to MuJoCo actuators (sim) or motor controller (real)
-/swarm/agent_{i}/outbox     ← GBP / distributed algorithm peer messages
-```
-
----
-
-## Real robot deployment (TurtleBot3)
+The real-robot stack lives entirely in `real_robot/` and uses ZeroMQ for
+cross-machine communication. ROS1 Melodic runs locally on each myAGV only
+for `/cmd_vel` delivery; the laptop needs no ROS at all.
 
 | Machine | Process |
 |---------|---------|
-| Laptop | `swarm_mujoco_bridge` (sim) or nothing (real hardware) |
-| Each TurtleBot3 | `swarm_agent agent_node` — one per robot |
-| Laptop or any machine | `swarm_central central_node` (centralized methods only) |
+| Laptop | `mocap_pub.py` (PhaseSpace → ZMQ), `central_runner.py` or `control_panel.py` |
+| Each myAGV | `agent_runner.py` + `ros1_bridge.py` |
 
+Quick start (from repo root):
 ```bash
-# On each TurtleBot3:
-ros2 launch swarm_agent agent.launch.py agent_id:=0 neighbor_ids:="1,2" goal_x:=5.0
+# Deploy and launch robot processes:
+./real_robot/scripts/deploy.sh --mode central --all
 
-# On laptop (centralized):
-ros2 launch swarm_central central.launch.py n_robots:=3 goal_x:=5.0
+# Launch laptop processes (mocap + controller + control panel):
+./real_robot/scripts/launch.sh --mode central
 ```
+
+See [real_robot/README.md](real_robot/README.md) for full setup, pose
+pipeline, controller selection, recording, and the sim→deploy pattern for
+writing new controllers.
 
 ---
 
@@ -240,13 +215,13 @@ python test_async_dropout.py
 ## Demos
 
 ```bash
-# Physics/contact validation (no ROS2):
+# Physics/contact validation:
 cd demos/mujoco_swarm_demo
-python scripts/demo.py
+python3 scripts/demo.py
 
-# Mecanum drive (requires ROS2 + holonomic_dp submodule):
-cd demos/mecanum_ros2_demo
-python demo.py
+# Full research scenario:
+cd demos/research_scenario_demo
+python3 demo.py
 ```
 
 ---
@@ -256,6 +231,4 @@ python demo.py
 - After pulling: `git submodule sync && git submodule update --init models/holonomic_dp`
 - The `swarmlib` venv install is editable (`pip install -e`), so local edits
   take effect immediately without reinstalling.
-- ROS2 packages import from `swarmlib` directly — no `sys.path` hacks needed.
-- `colcon build` only covers `src/`. Everything else (`swarmlib`, `experiments`,
-  `demos`) is plain Python.
+- Everything (`swarmlib`, `experiments`, `demos`, `real_robot`) is plain Python — no build step required.
