@@ -81,9 +81,23 @@ plt.rcParams.update({
 })
 
 
-def load(path: str) -> list:
+def load(path: str, success_threshold: float = 0.1) -> list:
     data = json.loads(Path(path).read_text())
     results = data.get("results", data)  # handle both formats
+    # Back-calculate straight_dist from stored path_length_m / path_length_ratio and
+    # reapply corrected denominator (straight_dist - success_threshold).  The old code
+    # used the full goal distance; the sim stops within tolerance so ratios could be < 1.
+    # Path ratio is also nulled for failed (timeout) runs — the payload never reached the
+    # goal so the ratio is meaningless and would skew figures/tables.
+    for r in results:
+        pl = r.get("path_length_m")
+        pr = r.get("path_length_ratio")
+        if not r.get("success", False):
+            r["path_length_ratio"] = None
+        elif pl is not None and pr is not None and pr > 1e-9:
+            straight_dist = pl / pr
+            effective = max(straight_dist - success_threshold, 1e-6)
+            r["path_length_ratio"] = pl / effective
     return results, data.get("F_wall_star", 10.0)
 
 
@@ -108,7 +122,7 @@ def mean_metric_vs_n(results, metric, ctrl):
     ns = sorted(set(r["n_robots"] for r in rows))
     vals = []
     for n in ns:
-        subset = [r[metric] for r in rows if r["n_robots"] == n]
+        subset = [r[metric] for r in rows if r["n_robots"] == n and r.get(metric) is not None]
         vals.append(float(np.nanmean(subset)) if subset else float("nan"))
     return np.array(ns), np.array(vals)
 
@@ -519,6 +533,14 @@ def fig_dropout(results):
 # LaTeX table generators
 # ---------------------------------------------------------------------------
 
+def _solve_cell(mean, std):
+    if mean is None or (isinstance(mean, float) and math.isnan(mean)):
+        return "—"
+    if std is None or (isinstance(std, float) and math.isnan(std)):
+        return f"${_nanfmt(mean)}$"
+    return f"${_nanfmt(mean)} \\pm {_nanfmt(std)}$"
+
+
 def _nanfmt(v, fmt=".2f"):
     if v is None or (isinstance(v, float) and math.isnan(v)):
         return "—"
@@ -561,8 +583,9 @@ def tab_summary(results, F_wall_star, default_n=4):
         r"$d=5\,$m, horizon $N=15$. "
         r"Formation error: mean distance of robots from nominal slot. "
         r"Wall force: mean contact force (target $F_{wall}^*=" + f"{F_wall_star:.0f}" + r"\,$N). "
-        r"Imbalance: $\sigma$ across robots, time-averaged. "
-        r"Path ratio: actual length / straight-line distance.}" + "\n"
+        r"Imbalance: std.\ of wall force across robots, time-averaged. "
+        r"Path ratio: actual path length / (straight-line distance $-$ goal tolerance); "
+        r"`---' indicates timeout (goal not reached).}" + "\n"
         r"\label{tab:summary}" + "\n"
         r"\begin{tabular}{lcccccc}" + "\n"
         r"\toprule" + "\n"
@@ -572,12 +595,12 @@ def tab_summary(results, F_wall_star, default_n=4):
     )
     body_lines = []
     for row in rows:
-        solve = f"${_nanfmt(row['solve_mean'])} \\pm {_nanfmt(row['solve_std'])}$"
+        solve = _solve_cell(row["solve_mean"], row["solve_std"])
         fe    = _nanfmt(row["fe_mean"], ".3f")
         wf    = _nanfmt(row["wf_mean"], ".1f")
         imb   = _nanfmt(row["wf_imb"], ".2f")
         pr    = _nanfmt(row["path_ratio"], ".3f")
-        suc   = f"{row['success']:.0%}"
+        suc   = f"{row['success']:.0%}".replace("%", r"\%")
         body_lines.append(f"{row['ctrl']} & {solve} & {fe} & {wf} & {imb} & {pr} & {suc} \\\\")
 
     footer = (
@@ -588,6 +611,72 @@ def tab_summary(results, F_wall_star, default_n=4):
 
     tex = header + "\n" + "\n".join(body_lines) + "\n" + footer
     out = TABLE_DIR / "tab_summary.tex"
+    out.write_text(tex)
+    print(f"  → {out.name}")
+
+
+def tab_full_results(results, F_wall_star):
+    """All metrics × all n_robots — one row per (controller, n) combination."""
+    subset = scalability_subset(results)
+    ctrls = controllers_in(subset)
+    ns = sorted(set(r["n_robots"] for r in subset))
+
+    header = (
+        r"\begin{table}[t]" + "\n"
+        r"\centering" + "\n"
+        r"\caption{Full results across team sizes. "
+        r"Formation error: mean distance of robots from nominal slot. "
+        r"Wall $F$: mean contact force (target $F_{wall}^*=" + f"{F_wall_star:.0f}" + r"\,$N). "
+        r"Imbalance: std.\ of wall force across robots, time-averaged. "
+        r"Path ratio: actual path length / (straight-line distance $-$ goal tolerance); "
+        r"`---' indicates timeout (goal not reached).}" + "\n"
+        r"\label{tab:full_results}" + "\n"
+        r"\begin{tabular}{llccccccc}" + "\n"
+        r"\toprule" + "\n"
+        r"Controller & $n$ & Solve (ms) & Form.\ err.\ (m) & "
+        r"Wall $F$ (N) & Imbalance (N) & Path ratio & Success \\" + "\n"
+        r"\midrule"
+    )
+
+    body_lines = []
+    prev_ctrl = None
+    for ctrl in ctrls:
+        for n in ns:
+            runs = [r for r in subset if r["controller"] == ctrl and r["n_robots"] == n]
+            if not runs:
+                continue
+            def m(key):
+                vals = [r[key] for r in runs if r.get(key) is not None]
+                return float(np.nanmean(vals)) if vals else float("nan")
+            def s(key):
+                vals = [r[key] for r in runs if r.get(key) is not None]
+                return float(np.nanstd(vals)) if len(vals) > 1 else float("nan")
+
+            suc = np.mean([float(r["success"]) for r in runs])
+            solve = _solve_cell(m("solve_time_mean_ms"), s("solve_time_mean_ms"))
+            fe    = _nanfmt(m("formation_error_mean_m"), ".3f")
+            wf    = _nanfmt(m("wall_force_mean_N"), ".1f")
+            imb   = _nanfmt(m("wall_force_imbalance_N"), ".2f")
+            pr    = _nanfmt(m("path_length_ratio"), ".3f")
+            suc_s = f"{suc:.0%}".replace("%", r"\%")
+
+            ctrl_cell = label(ctrl) if ctrl != prev_ctrl else ""
+            body_lines.append(
+                f"{ctrl_cell} & {n} & {solve} & {fe} & {wf} & {imb} & {pr} & {suc_s} \\\\"
+            )
+            prev_ctrl = ctrl
+        # horizontal rule between controllers (skip after last)
+        if ctrl != ctrls[-1]:
+            body_lines.append(r"\midrule")
+
+    footer = (
+        r"\bottomrule" + "\n"
+        r"\end{tabular}" + "\n"
+        r"\end{table}"
+    )
+
+    tex = header + "\n" + "\n".join(body_lines) + "\n" + footer
+    out = TABLE_DIR / "tab_full_results.tex"
     out.write_text(tex)
     print(f"  → {out.name}")
 
@@ -643,13 +732,15 @@ def main():
                         help="Path to JSON produced by run_report_experiments.py")
     parser.add_argument("--default-n", type=int, default=4,
                         help="Default robot count for per-controller time-series figures")
+    parser.add_argument("--threshold", type=float, default=0.1,
+                        help="Success threshold used in the experiment run (default: 0.1 m)")
     args = parser.parse_args()
 
     FIG_DIR.mkdir(parents=True, exist_ok=True)
     TABLE_DIR.mkdir(parents=True, exist_ok=True)
     NOTE_DIR.mkdir(parents=True, exist_ok=True)
 
-    results, F_wall_star = load(args.results)
+    results, F_wall_star = load(args.results, args.threshold)
     print(f"Loaded {len(results)} runs from {args.results}")
     print(f"F_wall_star = {F_wall_star} N\n")
 
@@ -671,6 +762,7 @@ def main():
     print("\nGenerating LaTeX tables...")
     tab_summary(results, F_wall_star, args.default_n)
     tab_scalability(results)
+    tab_full_results(results, F_wall_star)
 
     print(f"\nDone. Output in:\n  {FIG_DIR}\n  {TABLE_DIR}")
     print("\nNext steps:")

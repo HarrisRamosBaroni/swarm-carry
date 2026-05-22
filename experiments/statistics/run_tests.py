@@ -515,11 +515,15 @@ for {n_robots} robots formation, using size {recommended_payload_xy_size} instea
     sat_frac = float(saturated.mean())
     peak_torque = float(np.abs(torques).max())
 
-    # Path length and ratio
+    # Path length and ratio.
+    # The sim stops when the payload is within success_threshold of the goal, so the
+    # effective straight-line distance is reduced by that tolerance to avoid ratios < 1.0
+    # on clean runs (the payload never actually reaches the goal point exactly).
     steps_xy = traj[:, :2]
     path_length = float(np.sum(np.linalg.norm(np.diff(steps_xy, axis=0), axis=1)))
     straight_dist = float(np.linalg.norm(goal_arr[:2] - steps_xy[0]))
-    path_length_ratio = path_length / straight_dist if straight_dist > 1e-6 else 1.0
+    effective_straight = max(straight_dist - success_threshold, 1e-6)
+    path_length_ratio = path_length / effective_straight if effective_straight > 1e-6 else 1.0
 
     # Formation error aggregation
     fe_arr = np.array(formation_error_log) if formation_error_log else np.array([0.0])
